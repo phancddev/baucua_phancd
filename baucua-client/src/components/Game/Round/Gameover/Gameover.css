@@ -1,0 +1,94 @@
+.gameover-container {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 400px;
+  height: auto;
+}
+
+.gameover-title {
+  color: white;
+  text-shadow: 4px 4px #caa56c;
+  font-size: 50px;
+  font-weight: bold;
+  margin: 0;
+}
+
+.play-again-button {
+  color: white;
+  background: #caa56c;
+  border-radius: 15px;
+  border: none;
+  outline: none;
+  font-family: "Francois One", sans-serif;
+  font-size: 20px;
+  padding: 0.5rem 1rem;
+  margin: 1rem;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.play-again-button:hover {
+  background: #ac8c5e;
+  transition: 0.3s;
+}
+
+.play-again-message {
+  color: white;
+}
+
+.leaderboard {
+  display: flex;
+  flex-direction: column;
+  margin: 1rem;
+}
+
+.leaderboard-score {
+  display: flex;
+  justify-content: space-between;
+}
+
+.leaderboard-name-and-score {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+}
+
+.stat {
+  color: white;
+  font-size: 30px;
+  margin: 0;
+}
+
+.gold {
+  color: rgb(221, 188, 78);
+}
+
+.silver {
+  color: rgb(212, 212, 212);
+}
+
+.bronze {
+  color: rgb(168, 133, 87);
+}
+
+/* Mobile Responsive */
+@media screen and (max-width: 650px) {
+  .gameover-container {
+    width: 250px;
+  }
+
+  .stat {
+    font-size: 18px;
+  }
+}
+
+@media screen and (max-width: 850px) and (orientation: landscape) {
+  .gameover-container {
+    width: 250px;
+  }
+
+  .stat {
+    font-size: 14px;
+  }
+}

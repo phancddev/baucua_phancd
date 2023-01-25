@@ -1,0 +1,130 @@
+.game-page-container {
+  padding-right: 15px;
+  padding-left: 15px;
+  margin-right: auto;
+  margin-left: auto;
+  max-width: 1200px;
+}
+
+.mini-logo-wrapper {
+  width: 100%;
+  margin-top: 2rem;
+}
+
+.mini-logo {
+  max-width: 200px;
+  height: auto;
+  cursor: pointer;
+}
+
+.game-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.game {
+  display: flex;
+  flex-direction: row;
+}
+
+.game-board {
+  display: flex;
+  flex-direction: column;
+  margin-left: 1rem;
+  width: 100%;
+}
+
+#overlay {
+  position: fixed;
+  background-color: black;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  opacity: 0.5;
+}
+
+#clear-overlay {
+  position: fixed;
+  background-color: none;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  opacity: 0.5;
+}
+
+/* Chat Button */
+.chat-btn-wrapper {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+}
+
+#chat-btn {
+  color: white;
+  filter: drop-shadow(0 0 2px black);
+  margin-top: 2rem;
+  padding: 0.5rem;
+  cursor: pointer;
+  transition: 0.3s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#chat-btn:hover {
+  transform: translateY(-2px);
+  transition: 0.2s;
+}
+
+/* CSSTransitionGroup for banners */
+.round-modal-enter {
+  -webkit-transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%);
+  opacity: 0;
+}
+
+.round-modal-enter-active {
+  -webkit-transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%);
+  opacity: 1;
+  transition: 0.3s;
+}
+
+.round-modal-enter-done {
+  -webkit-transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%);
+  opacity: 1;
+}
+
+.round-modal-exit {
+  -webkit-transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%);
+  opacity: 1;
+}
+.round-modal-exit-active {
+  -webkit-transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition: 0.3s;
+}
+
+/* Mobile Responsive */
+@media screen and (max-width: 1012px) {
+  .game {
+    flex-direction: column;
+  }
+
+  .game-board {
+    margin: 0;
+  }
+}
+
+@media screen and (max-width: 650px) {
+  .game {
+    flex-direction: column;
+  }
+
+  .game-board {
+    margin: 0;
+  }
+}

@@ -1,0 +1,141 @@
+.dashboard-container {
+  margin-top: 1rem;
+}
+
+.dashboard-content {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.dollars {
+  display: flex;
+  align-items: flex-start;
+}
+
+.dollar {
+  width: 120px;
+  margin-right: 1rem;
+  cursor: pointer;
+}
+
+.dollar:hover {
+  box-shadow: 0 0 3px 1px #caa56c;
+  transform: translateY(-5px);
+  transition: 0.3s;
+}
+
+.dollar-active {
+  box-shadow: 0 0 3px 1px #caa56c;
+  transform: translateY(-5px);
+  transition: 0.3s;
+}
+
+.dollar-disabled {
+  display: none;
+  width: 120px;
+  margin-right: 1rem;
+  pointer-events: none;
+}
+
+.bet-btn {
+  color: white;
+  background-color: #caa56c;
+  box-shadow: 0 5px #644e2d;
+  border-radius: 15px;
+  border: none;
+  outline: none;
+  font-size: 36px;
+  font-family: "Francois One", sans-serif;
+  width: 100%;
+  height: 65px;
+  cursor: pointer;
+  transition: 0.1s;
+}
+
+.bet-btn-active {
+  transform: translateY(5px);
+  color: #c9c9c9;
+  background-color: #80663f;
+  box-shadow: 0 2px #644e2d;
+  cursor: default;
+  transition: 0.1s;
+}
+
+.bet-btn-disabled {
+  color: #e6e6e6;
+  background-color: #a4a4a4;
+  box-shadow: 0 5px #757575;
+  pointer-events: none;
+}
+
+.dollars-mobile {
+  display: none;
+}
+
+/* Mobile Responsive */
+@media screen and (max-width: 1200px) {
+  .dashboard-container {
+    display: inline-flex;
+    margin-bottom: 3rem;
+  }
+
+  .dashboard-content {
+    width: 100%;
+    display: flex;
+    align-items: center;
+  }
+
+  .dollars {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .dollar,
+  .dollar-disabled {
+    width: 85px;
+    margin-right: 1rem;
+  }
+
+  .bet-btn {
+    font-size: 24px;
+    height: 50px;
+  }
+}
+
+@media screen and (max-width: 750px) {
+  .dashboard-container {
+    display: inline-flex;
+    margin-bottom: 3rem;
+  }
+
+  .dashboard-content {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .dollars {
+    display: none;
+  }
+
+  .dollars-mobile {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+  }
+
+  .dollar,
+  .dollar-disabled {
+    width: 55px;
+    margin-right: 0;
+  }
+
+  .bet-btn {
+    font-size: 50px;
+    height: 80px;
+  }
+}

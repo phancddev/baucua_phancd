@@ -1,0 +1,72 @@
+.help-container {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 5rem;
+  background-color: white;
+  width: 400px;
+  border-radius: 15px;
+}
+
+.help-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0 1rem 0 1rem;
+}
+
+.help-title {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.close-icon {
+  font-size: 24px;
+  color: black;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.close-icon:hover {
+  opacity: 1;
+  transition: 0.2s;
+}
+
+.help-content {
+  margin: 0 1rem 0 1rem;
+}
+
+/* Mobile Responsive */
+@media screen and (max-width: 850px) and (orientation: landscape) {
+  .help-container {
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background-color: white;
+    width: 100%;
+    border-radius: 0;
+    z-index: 1;
+    overflow: auto;
+  }
+}
+
+@media screen and (max-width: 500px) {
+  .help-container {
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background-color: white;
+    width: 100%;
+    border-radius: 0;
+    z-index: 1;
+  }
+}

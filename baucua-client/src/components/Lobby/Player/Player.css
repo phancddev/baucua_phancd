@@ -1,0 +1,38 @@
+.player {
+  text-align: center;
+  width: 150px;
+}
+
+.player-name {
+  margin-top: 0.25rem;
+}
+
+.crown-icon {
+  color: gold;
+}
+
+/* Mobile Responsive */
+@media screen and (max-width: 650px) {
+  .player {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1rem;
+    width: auto;
+  }
+
+  .player-name {
+    margin: 0 0 0 2rem;
+  }
+
+  .crown-icon {
+    font-size: 7px;
+  }
+
+  .crown-icon-ghost {
+    display: none;
+  }
+
+  #player-icon {
+    font-size: 36px;
+  }
+}
