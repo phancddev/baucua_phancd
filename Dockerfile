@@ -18,6 +18,9 @@ WORKDIR /usr/src/app/baucua-client
 COPY baucua-client/package.json baucua-client/package-lock.json ./
 RUN npm install
 
+# Thêm biến môi trường để Webpack hoạt động với Node.js 17+
+ENV NODE_OPTIONS=--openssl-legacy-provider
+
 # Build frontend
 RUN npm run build
 
