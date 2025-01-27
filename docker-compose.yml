@@ -1,18 +1,12 @@
-version: "3.8"
-
+version: "3.9"
 services:
   baucua-app:
-    build:
-      context: .
-    container_name: baucua-container
+    build: .
     ports:
-      - "9000:9000" # Liên kết cổng 9000 của container với máy host
-    volumes:
-      - .:/usr/src/app # Đồng bộ mã nguồn để phát triển
-      - /usr/src/app/node_modules # Bỏ qua node_modules khi đồng bộ
+      - "3000:3000" # React Development Server
+      - "9000:9000" # Backend server
     environment:
       - NODE_ENV=development
       - NODE_OPTIONS=--openssl-legacy-provider
-    stdin_open: true
-    tty: true
+      - HOST=0.0.0.0
     command: ["npm", "run", "dev"]

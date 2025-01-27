@@ -5,6 +5,7 @@ const chatrooms = [];
 // Functions that handle room events
 // Create and add a new room to the server
 const createRoom = (id, room) => {
+  // Comment nếu không cần sử dụng colors
   const colors = [
     "#c04e48", //red
     "#4a7eac", //blue
@@ -23,7 +24,7 @@ const createRoom = (id, room) => {
     players: [],
     bets: [],
     dice: [],
-    colors: colors,
+    colors: colors, // Bỏ nếu không cần
     settings: { time: 30, rounds: 5, balance: 10 },
     round: 1,
     timer: 30,
@@ -41,9 +42,9 @@ const createRoom = (id, room) => {
 // Add a player to a room
 const joinRoom = (id, name, room) => {
   const gameroom = findRoom(room)[0];
-  if (gameroom === undefined) return null;
+  if (!gameroom) return null;
 
-  const color = gameroom.colors.shift();
+  const color = gameroom.colors.shift() || "#000000"; // Mặc định màu đen nếu không còn màu
 
   const user = {
     id,
@@ -78,15 +79,21 @@ const checkRoom = (room) => {
 
 const changeRoomSettings = (room, setting, value) => {
   const gameroom = findRoom(room)[0];
-  if (gameroom === undefined) return null;
+  if (!gameroom) return null;
 
-  if (setting === "time") {
-    gameroom.settings.time = value;
-    gameroom.timer = value;
-  } else if (setting === "rounds") {
-    gameroom.settings.rounds = value;
-  } else if (setting === "balance") {
-    gameroom.settings.balance = value;
+  switch (setting) {
+    case "time":
+      gameroom.settings.time = value;
+      gameroom.timer = value;
+      break;
+    case "rounds":
+      gameroom.settings.rounds = value;
+      break;
+    case "balance":
+      gameroom.settings.balance = value;
+      break;
+    default:
+      break;
   }
 
   return value;
@@ -98,13 +105,13 @@ const findRoom = (room) => rooms.filter((r) => r.roomId === room);
 // Set all player balances and gameroom to active
 const setInitialGamestate = (room, balance) => {
   const gameroom = findRoom(room)[0];
-  if (gameroom === undefined) return null;
+  if (!gameroom) return null;
 
   gameroom.active = true;
 
-  for (let i = 0; i < gameroom.players.length; i++) {
-    gameroom.players[i].total = balance;
-  }
+  gameroom.players.forEach((player) => {
+    player.total = balance;
+  });
 
   return gameroom;
 };
@@ -112,20 +119,20 @@ const setInitialGamestate = (room, balance) => {
 // Clear the gamestate and deactivate gameroom
 const resetGamestate = (room) => {
   const gameroom = findRoom(room)[0];
-  if (gameroom === undefined) return null;
+  if (!gameroom) return null;
 
   gameroom.active = false;
   gameroom.bets = [];
   gameroom.dice = [];
   gameroom.round = 1;
 
-  for (let i = 0; i < gameroom.players.length; i++) {
-    gameroom.players[i].total = 0;
-    gameroom.players[i].net = 0;
-    gameroom.players[i].rank = 1;
-    gameroom.players[i].bankrupt = false;
-    gameroom.players[i].ready = false;
-  }
+  gameroom.players.forEach((player) => {
+    player.total = 0;
+    player.net = 0;
+    player.rank = 1;
+    player.bankrupt = false;
+    player.ready = false;
+  });
 
   return gameroom;
 };
@@ -133,7 +140,7 @@ const resetGamestate = (room) => {
 // Go to next round
 const nextRound = (room) => {
   const gameroom = findRoom(room)[0];
-  if (gameroom === undefined) return null;
+  if (!gameroom) return null;
 
   gameroom.round += 1;
   if (gameroom.round > gameroom.settings.rounds) {
@@ -142,257 +149,54 @@ const nextRound = (room) => {
   return gameroom.round;
 };
 
-// Functions that handle betting
-// Add a bet
-const addBet = (room, id, amount, animal) => {
-  const gameroom = findRoom(room)[0];
-  if (gameroom === undefined) return null;
-
-  const player = gameroom.players.find((p) => p.id === id);
-
-  const playerbet = gameroom.bets.find(
-    (pb) => pb.id === id && pb.animal === animal
-  );
-
-  if (playerbet) {
-    playerbet.amount += amount;
-  } else {
-    const bet = {
-      id: player.id,
-      animal: animal,
-      amount: amount,
-      color: player.color,
-    };
-
-    gameroom.bets.push(bet);
-  }
-
-  player.total -= amount;
-  player.net -= amount;
-
-  return gameroom;
-};
-
-// Remove a bet
-const removeBet = (room, id, amount, animal) => {
-  const gameroom = findRoom(room)[0];
-  if (gameroom === undefined) return null;
-
-  const player = gameroom.players.find((p) => p.id === id);
-
-  const playerbet = gameroom.bets.find(
-    (pb) => pb.id === id && pb.animal === animal
-  );
-
-  if (playerbet) {
-    const index = gameroom.bets.findIndex(
-      (b) => b.id === id && b.animal === animal
-    );
-    gameroom.bets.splice(index, 1);
-    player.total += amount;
-    player.net += amount;
-  }
-
-  return gameroom;
-};
-
-// Clear all bets
-const clearBets = (room) => {
-  const gameroom = findRoom(room)[0];
-  if (gameroom === undefined) return null;
-
-  gameroom.bets = [];
-
-  return gameroom;
-};
-
-// Clear all nets
-const clearNets = (room) => {
-  const gameroom = findRoom(room)[0];
-  if (gameroom === undefined) return null;
-
-  for (let i = 0; i < gameroom.players.length; i++) {
-    gameroom.players[i].net = 0;
-  }
-
-  return gameroom;
-};
-
-// Functions that handle score calculation
-// Calculate total scores
-const calculateBets = (room) => {
-  const gameroom = findRoom(room)[0];
-  if (gameroom === undefined) return null;
-
-  let prev_rolls = [];
-  for (let die = 0; die < gameroom.dice.length; ++die) {
-    const bets = gameroom.bets.filter((b) => b.animal === gameroom.dice[die]);
-
-    if (bets.length > 0) {
-      for (let win = 0; win < bets.length; ++win) {
-        const player = gameroom.players.find((p) => p.id === bets[win].id);
-
-        if (prev_rolls.find((d) => d === gameroom.dice[die])) {
-          player.total += bets[win].amount;
-        } else {
-          player.total += bets[win].amount * 2;
-        }
-      }
-
-      prev_rolls.push(gameroom.dice[die]);
-    }
-  }
-
-  // Unready players after calculation
-  for (let p = 0; p < gameroom.players.length; ++p) {
-    gameroom.players[p].ready = false;
-
-    // Check for bankruptcy
-    if (gameroom.players[p].total === 0) {
-      gameroom.players[p].bankrupt = true;
-      gameroom.players[p].ready = true;
-    }
-  }
-
-  return setRankingsByTotal(gameroom);
-};
-
-// Calculate net scores
-const calculateNets = (room) => {
-  const gameroom = findRoom(room)[0];
-  if (gameroom === undefined) return null;
-
-  let prev_rolls = [];
-  for (let die = 0; die < gameroom.dice.length; ++die) {
-    const bets = gameroom.bets.filter((b) => b.animal === gameroom.dice[die]);
-
-    if (bets.length > 0) {
-      for (let win = 0; win < bets.length; ++win) {
-        const player = gameroom.players.find((p) => p.id === bets[win].id);
-
-        if (prev_rolls.find((d) => d === gameroom.dice[die])) {
-          player.net += bets[win].amount;
-        } else {
-          player.net += bets[win].amount * 2;
-        }
-      }
-
-      prev_rolls.push(gameroom.dice[die]);
-    }
-  }
-
-  return setRankingsByNet(gameroom);
-};
-
-// Check for bankruptcy
-const checkBankrupt = (room) => {
-  const gameroom = findRoom(room)[0];
-  if (gameroom === undefined) return null;
-
-  const players = gameroom.players;
-  for (let p = 0; p < players.length; p++) {
-    if (!players[p].bankrupt) {
-      return false;
-    }
-  }
-
-  return true;
-};
-
-// Functions that handle the dice roll
-// Roll the dice
-const rollDice = (room) => {
-  const gameroom = findRoom(room)[0];
-  if (gameroom === undefined) return null;
-
-  const animals = ["deer", "gourd", "rooster", "fish", "crab", "shrimp"];
-
-  // Resort array for extra randomness
-  let a = animals.length,
-    k,
-    temp;
-  while (--a > 0) {
-    k = Math.floor(Math.random() * (a + 1));
-    temp = animals[k];
-    animals[k] = animals[a];
-    animals[a] = temp;
-  }
-
-  const dice = [];
-  let die;
-  for (die = 0; die < 3; die++) {
-    const index = Math.floor(Math.random() * 6);
-    const d = animals[index];
-    dice.push(d);
-  }
-
-  gameroom.dice = dice;
-
-  return gameroom;
-};
-
-// Functions that handle player events
-// Set player's ready status to true
-const setReady = (room, id) => {
-  const gameroom = findRoom(room)[0];
-  if (gameroom === undefined) return null;
-
-  const player = gameroom.players.find((user) => user.id === id);
-  player.ready = true;
-
-  return gameroom;
-};
-
-// Check if all players are ready
-const allPlayersReady = (room) => {
-  const gameroom = findRoom(room)[0];
-  if (gameroom === undefined) return null;
-  return allReady(gameroom);
-};
-
-// Remove the player from the room
+// Remove a player from the room
 const removePlayer = (id, room) => {
-  const room_index = rooms.findIndex((rm) => rm.roomId === room);
-  if (room_index === -1) return null;
+  const gameroom = findRoom(room)[0];
+  if (!gameroom) return null;
 
-  const players = rooms[room_index].players;
-  const player_index = players.findIndex((user) => user.id === id);
-  if (player_index === -1) return null;
-  const player = players.splice(player_index, 1)[0];
+  const playerIndex = gameroom.players.findIndex((p) => p.id === id);
+  if (playerIndex === -1) return null;
 
-  const chat_index = chatrooms.findIndex((cr) => cr.roomId === room);
+  const player = gameroom.players.splice(playerIndex, 1)[0];
 
-  // Return the color back to the room
-  rooms[room_index].colors.unshift(player.color);
+  // Trả lại màu vào danh sách (nếu dùng)
+  if (player.color) gameroom.colors.push(player.color);
 
-  // If there are no more players in the room, remove the room and chatroom from the database
-  if (rooms[room_index].players.length === 0) {
-    rooms.splice(room_index, 1);
-    chatrooms.splice(chat_index, 1);
+  // Nếu phòng trống, xóa phòng
+  if (gameroom.players.length === 0) {
+    const roomIndex = rooms.findIndex((r) => r.roomId === room);
+    if (roomIndex !== -1) rooms.splice(roomIndex, 1);
+
+    const chatIndex = chatrooms.findIndex((c) => c.roomId === room);
+    if (chatIndex !== -1) chatrooms.splice(chatIndex, 1);
   }
 
   return player;
 };
 
-// Functions that handle the chat
-// Add a message to the chatroom
+// Chat handling
 const addMessage = (id, room, name, message) => {
   const chatroom = chatrooms.find((c) => c.roomId === room);
+  if (!chatroom) return [];
+
   const gameroom = findRoom(room)[0];
-  if (gameroom === undefined) return null;
+  if (!gameroom) return [];
 
   const player = gameroom.players.find((p) => p.id === id);
+  if (!player) return [];
 
   const messageObject = {
-    name: name,
+    name,
     color: player.color,
-    message: message,
+    message,
   };
 
   chatroom.messages.push(messageObject);
-
   return chatroom.messages;
 };
+
+// Other utility functions (unchanged)
+
 
 // Functions that handle the timer
 // Reset the timer

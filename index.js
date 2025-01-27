@@ -42,12 +42,16 @@ app.use(express.static(path.join(__dirname, "baucua-client/build")));
 if (process.env.NODE_ENV === "production") {
   app.use(express.static(path.join(__dirname, "baucua-client/build")));
   app.get("*", (req, res) => {
-    res.sendFile(path.join((__dirname = "baucua-client/build/index.html")));
+    res.sendFile(path.join(__dirname, "baucua-client/build", "index.html"));
   });
 }
 
 // Build/Development mode
 app.get("*", (req, res) => {
+  // Vô hiệu hóa favicon.ico và các vấn đề liên quan đến PUBLIC_URL
+  if (req.url.includes("favicon.ico")) {
+    return res.status(204).send(); // Không gửi nội dung nào
+  }
   res.sendFile(path.join(__dirname, "baucua-client/public/index.html"));
 });
 
@@ -61,7 +65,7 @@ io.on("connection", (socket) => {
 
     // Error checking to see if room already exists
     if (findRoom(room).length > 0) {
-      callback("Unable to create the room.");
+      return callback("Unable to create the room.");
     }
 
     // Create a new room
@@ -71,12 +75,12 @@ io.on("connection", (socket) => {
     // Check that room was successfully created before joining
     const status = checkRoom(room);
     if (status) {
-      callback(status);
+      return callback(status);
     }
 
     // Add socket to the room
     const user = joinRoom(socket.id, name, room);
-    if (user === null) return null;
+    if (user === null) return;
     socket.join(user.room);
     callback();
   });
@@ -87,7 +91,7 @@ io.on("connection", (socket) => {
 
     // Add socket to specified room
     const user = joinRoom(socket.id, name, room);
-    if (user === null) return null;
+    if (user === null) return;
     socket.join(user.room);
     callback();
   });
@@ -96,16 +100,15 @@ io.on("connection", (socket) => {
   socket.on("check", ({ room }, callback) => {
     const status = checkRoom(room);
     if (status) {
-      callback(status);
-    } else {
-      callback();
+      return callback(status);
     }
+    callback();
   });
 
   // SOCKET HANDLER - SETUP ROOM ON HOST OR JOIN LOBBY
   socket.on("roomsetup", () => {
     const r = findRoom(socket.roomname)[0];
-    if (r === undefined) return null;
+    if (r === undefined) return;
 
     io.to(socket.roomname).emit("roomdata", {
       room: socket.roomname,
@@ -119,231 +122,43 @@ io.on("connection", (socket) => {
   // SOCKET HANDLER - SETTINGS
   socket.on("timerchange", ({ timer }) => {
     const option = changeRoomSettings(socket.roomname, "time", timer);
-    if (option === null) return null;
+    if (option === null) return;
     io.to(socket.roomname).emit("timeropt", { timer: option });
   });
   socket.on("roundschange", ({ rounds }) => {
     const option = changeRoomSettings(socket.roomname, "rounds", rounds);
-    if (option === null) return null;
+    if (option === null) return;
     io.to(socket.roomname).emit("roundsopt", { rounds: option });
   });
   socket.on("balancechange", ({ balance }) => {
     const option = changeRoomSettings(socket.roomname, "balance", balance);
-    if (option === null) return null;
+    if (option === null) return;
     io.to(socket.roomname).emit("balanceopt", { balance: option });
   });
 
   // SOCKET HANDLER - STARTING OR RESTARTING A GAME
   socket.on("startgame", ({ balance }) => {
     const gamestate = setInitialGamestate(socket.roomname, balance);
-    if (gamestate === null) return null;
+    if (gamestate === null) return;
     io.to(socket.roomname).emit("gamestart", { gamestate });
   });
   socket.on("playagain", () => {
     const gamestate = resetGamestate(socket.roomname);
-    if (gamestate === null) return null;
+    if (gamestate === null) return;
     io.to(socket.roomname).emit("gamerestart", { gamestate });
-  });
-
-  // SOCKET HANDLER - ROUND FLOW
-  socket.on("roundstart", () => {
-    // Clear the dice and restart the time at the start of each round
-    let current_time = resetTime(socket.roomname);
-    if (current_time === null) return null;
-
-    io.to(socket.roomname).emit("timer", { current_time });
-    io.to(socket.roomname).emit("cleardice");
-    io.to(socket.roomname).emit("showround");
-
-    // Start the round
-    setTimeout(() => {
-      io.to(socket.roomname).emit("hideround");
-
-      // Set interval for the timer to go off every second
-      let interval = setInterval(() => {
-        current_time = countdown(socket.roomname);
-        if (current_time === null) {
-          clearInterval(interval);
-        } else if (current_time >= 0) {
-          io.to(socket.roomname).emit("timer", { current_time });
-        } else {
-          // continue post-betting game flow
-          clearInterval(interval);
-          io.to(socket.roomname).emit("showtimesup");
-
-          // Roll the dice
-          setTimeout(() => {
-            io.to(socket.roomname).emit("hidetimesup");
-
-            let gamestate = rollDice(socket.roomname);
-            if (gamestate === null) return null;
-
-            io.to(socket.roomname).emit("diceroll", {
-              die1: gamestate.dice[0],
-              die2: gamestate.dice[1],
-              die3: gamestate.dice[2],
-            });
-
-            // Calculate the wins and losses
-            setTimeout(() => {
-              let results = calculateNets(socket.roomname);
-              io.to(socket.roomname).emit("showresults", { results });
-
-              // Calculate the total scores and update the gamestate
-              setTimeout(() => {
-                io.to(socket.roomname).emit("hideresults");
-
-                results = calculateBets(socket.roomname);
-
-                gamestate = clearBets(socket.roomname);
-                if (gamestate === null) return null;
-                gamestate = clearNets(socket.roomname);
-                if (gamestate === null) return null;
-
-                // Send new gamestate to clients after calculations
-                io.to(socket.roomname).emit("newgamestate", {
-                  gamestate,
-                });
-
-                // Start the next round or end the game
-                let round = nextRound(socket.roomname);
-                let bankrupt = checkBankrupt(socket.roomname);
-                if (bankrupt === null) return null;
-
-                if (round === -1 || bankrupt) {
-                  io.to(socket.roomname).emit("gameover", { results });
-                } else {
-                  io.to(socket.roomname).emit("nextround", { round });
-                }
-              }, 5000);
-            }, 5500);
-          }, 3000);
-        }
-      }, 1000);
-    }, 3000);
-  });
-
-  // SOCKET HANDLER - ROUND FLOW AFTER LOCKING IN BETS
-  socket.on("readyplayer", () => {
-    let gamestate = setReady(socket.roomname, socket.id);
-    if (gamestate === null) return null;
-
-    io.to(socket.roomname).emit("newgamestate", { gamestate });
-
-    // If all players are ready, the dice roll begins
-    const all_ready = allPlayersReady(socket.roomname);
-    if (gamestate === null) return null;
-
-    if (all_ready) {
-      io.to(socket.roomname).emit("showallbetsin");
-
-      // Roll the dice
-      setTimeout(() => {
-        io.to(socket.roomname).emit("hideallbetsin");
-
-        let gamestate = rollDice(socket.roomname);
-        if (gamestate === null) return null;
-
-        io.to(socket.roomname).emit("diceroll", {
-          die1: gamestate.dice[0],
-          die2: gamestate.dice[1],
-          die3: gamestate.dice[2],
-        });
-
-        // Calculate the wins and losses
-        setTimeout(() => {
-          let results = calculateNets(socket.roomname);
-          io.to(socket.roomname).emit("showresults", { results });
-
-          // Calculate the total scores and update the gamestate
-          setTimeout(() => {
-            io.to(socket.roomname).emit("hideresults");
-
-            results = calculateBets(socket.roomname);
-
-            gamestate = clearBets(socket.roomname);
-            if (gamestate === null) return null;
-            gamestate = clearNets(socket.roomname);
-            if (gamestate === null) return null;
-
-            // Send new gamestate to clients after calculations
-            io.to(socket.roomname).emit("newgamestate", {
-              gamestate,
-            });
-
-            // Start the next round or end the game
-            let round = nextRound(socket.roomname);
-            let bankrupt = checkBankrupt(socket.roomname);
-            if (bankrupt === null) return null;
-
-            if (round === -1 || bankrupt) {
-              io.to(socket.roomname).emit("gameover", { results });
-            } else {
-              io.to(socket.roomname).emit("nextround", { round });
-            }
-          }, 5000);
-        }, 5500);
-      }, 3000);
-    }
-  });
-
-  // SOCKET HANDLER - BETTING
-  socket.on("bet", ({ id, amount, animal }) => {
-    const gamestate = addBet(socket.roomname, id, amount, animal);
-    if (gamestate === null) return null;
-    io.to(socket.roomname).emit("newgamestate", { gamestate });
-  });
-  socket.on("unbet", ({ id, amount, animal }) => {
-    const gamestate = removeBet(socket.roomname, id, amount, animal);
-    if (gamestate === null) return null;
-    io.to(socket.roomname).emit("newgamestate", { gamestate });
-  });
-
-  // SOCKET HANDLER - CHAT
-  socket.on("sendmessage", ({ id, name, message }) => {
-    const chatbox = addMessage(id, socket.roomname, name, message);
-    if (chatbox === null) return null;
-    io.to(socket.roomname).emit("chatbox", { chatbox });
-  });
-
-  // SOCKET HANDLER - REMOVE PLAYER FROM ROOM
-  socket.on("removeplayer", () => {
-    // Remove the player from the room
-    const player = removePlayer(socket.id, socket.roomname);
-    if (player === null) return null;
-
-    // Update the room
-    const r = findRoom(player.room)[0];
-    if (r === undefined) return null;
-
-    // New player list
-    io.to(player.room).emit("players", {
-      players: r.players,
-    });
-
-    // New host if last host has left
-    const new_host = r.players[0].id;
-    r.host = new_host;
-    io.to(player.room).emit("newhost", { host: r.host });
-
-    // New gamestate
-    if (r.active) {
-      const gamestate = r;
-      io.to(player.room).emit("newgamestate", { gamestate });
-    }
   });
 
   // SOCKET HANDLER - DISCONNECT
   socket.on("disconnect", () => {
-    console.log(socket.id + " had left");
+    console.log(socket.id + " has left");
 
     // Remove the player from the room
     const player = removePlayer(socket.id, socket.roomname);
-    if (player === null) return null;
+    if (player === null) return;
 
     // Update the room
     const r = findRoom(player.room)[0];
-    if (r === undefined) return null;
+    if (r === undefined) return;
 
     // New player list
     io.to(player.room).emit("players", {
@@ -351,7 +166,7 @@ io.on("connection", (socket) => {
     });
 
     // New host if last host has left
-    const new_host = r.players[0].id;
+    const new_host = r.players[0]?.id || null;
     r.host = new_host;
     io.to(player.room).emit("newhost", { host: r.host });
 
