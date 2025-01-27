@@ -2,15 +2,17 @@ version: "3.8"
 
 services:
   baucua-app:
-    build: .
+    build:
+      context: .
     container_name: baucua-container
     ports:
       - "9000:9000" # Liên kết cổng 9000 của container với máy host
     volumes:
-      - .:/usr/src/app # Đồng bộ mã nguồn để dễ phát triển
+      - .:/usr/src/app # Đồng bộ mã nguồn để phát triển
       - /usr/src/app/node_modules # Bỏ qua node_modules khi đồng bộ
-    stdin_open: true
-    tty: true
     environment:
       - NODE_ENV=development
+      - NODE_OPTIONS=--openssl-legacy-provider
+    stdin_open: true
+    tty: true
     command: ["npm", "run", "dev"]

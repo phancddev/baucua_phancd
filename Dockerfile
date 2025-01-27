@@ -1,4 +1,4 @@
-# Sử dụng Node.js 18.12.1 LTS
+# Sử dụng Node.js 18.12.1 LTS làm base image
 FROM node:18.12.1
 
 # Thiết lập thư mục làm việc
@@ -7,19 +7,20 @@ WORKDIR /usr/src/app
 # Copy file package.json và package-lock.json của backend
 COPY package.json package-lock.json ./
 
-# Cài đặt các dependency cho backend
+# Cài đặt dependency cho backend
 RUN npm install
 
 # Copy toàn bộ mã nguồn backend vào container
 COPY . .
 
-# Cài đặt các dependency cho frontend
+# Thiết lập thư mục làm việc cho frontend
 WORKDIR /usr/src/app/baucua-client
-COPY baucua-client/package.json baucua-client/package-lock.json ./
-RUN npm install
 
-# Thêm biến môi trường để Webpack hoạt động với Node.js 17+
-ENV NODE_OPTIONS=--openssl-legacy-provider
+# Copy file package.json và package-lock.json của frontend
+COPY baucua-client/package.json baucua-client/package-lock.json ./
+
+# Cài đặt dependency cho frontend
+RUN npm install --legacy-peer-deps
 
 # Build frontend
 RUN npm run build
@@ -27,8 +28,8 @@ RUN npm run build
 # Quay lại thư mục gốc để khởi chạy ứng dụng
 WORKDIR /usr/src/app
 
-# Mở cổng 9000 cho server
+# Mở cổng cho server backend
 EXPOSE 9000
 
-# Chạy ứng dụng
+# Khởi chạy backend server
 CMD ["npm", "run", "dev"]
