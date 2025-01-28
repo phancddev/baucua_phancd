@@ -14,8 +14,10 @@ const io = require("socket.io")(http, {
   pingTimeout: 60000,
   cors: {
     origin: "*",  // Cho phép tất cả origins trong development
-    methods: ["GET", "POST"]
-  }
+    methods: ["GET", "POST"],
+    credentials: true
+  },
+  transports: ['websocket', 'polling']
 });
 
 // Import room functions

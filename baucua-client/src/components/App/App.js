@@ -7,22 +7,56 @@ import "./App.css";
 import MainMenu from "components/MainMenu/MainMenu";
 import Room from "components/Room/Room";
 
-const DEV_ENDPOINT = "http://localhost:9000";
-// const PROD_ENDPOINT = "https://baucuacacop.herokuapp.com/";
-const socket = io(DEV_ENDPOINT, { reconnection: false });
+// Cấu hình endpoint
+const ENDPOINT = process.env.NODE_ENV === 'production' 
+  ? "http://167.235.150.190:9000"  // IP VPS của bạn
+  : "http://localhost:9000";
+
+// Cấu hình socket
+const socket = io(ENDPOINT, {
+  transports: ['websocket', 'polling'],
+  cors: {
+    origin: "*",
+    credentials: true
+  },
+  reconnection: true,
+  reconnectionAttempts: 5,
+  reconnectionDelay: 1000
+});
 
 function App() {
   const [renderView, setRender] = useState(0);
+  const [connected, setConnected] = useState(false);
 
-  // Clean up socket on component unmounting
   useEffect(() => {
+    // Xử lý socket events
+    socket.on('connect', () => {
+      console.log('Connected to server');
+      setConnected(true);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Disconnected from server');
+      setConnected(false);
+    });
+
+    socket.on('connect_error', (error) => {
+      console.log('Connection error:', error);
+    });
+
+    // Cleanup khi component unmount
     return () => {
+      socket.off('connect');
+      socket.off('disconnect');
+      socket.off('connect_error');
       socket.disconnect();
     };
   }, []);
 
   const renderMainMenu = () => {
-    socket.emit("removeplayer");
+    if (connected) {
+      socket.emit("removeplayer");
+    }
     setRender(0);
   };
 
@@ -30,7 +64,12 @@ function App() {
     setRender(1);
   };
 
-  // Render
+  // Render loading khi chưa kết nối được
+  if (!connected) {
+    return <div>Connecting to server...</div>;
+  }
+
+  // Render views
   switch (renderView) {
     case 1:
       return (
