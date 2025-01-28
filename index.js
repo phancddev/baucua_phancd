@@ -1,210 +1,251 @@
 const express = require("express");
-const cors = require("cors"); // Thêm CORS middleware
 const app = express();
 const http = require("http").createServer(app);
 const path = require("path");
+const rateLimit = require('express-rate-limit');
+const winston = require('winston');
 const port = process.env.PORT || 9000;
+
+// Setup logging
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.json(),
+  transports: [
+    new winston.transports.File({ filename: 'error.log', level: 'error' }),
+    new winston.transports.File({ filename: 'combined.log' })
+  ]
+});
+
+// Rate limiting middleware
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100 // limit each IP to 100 requests per windowMs
+});
+
+// Apply rate limiting to all routes
+app.use(limiter);
 
 const io = require("socket.io")(http, {
   pingInterval: 25000,
   pingTimeout: 60000,
+  cors: {
+    origin: process.env.CLIENT_URL || "http://localhost:3000",
+    methods: ["GET", "POST"]
+  }
 });
 
-// Import các hàm trong room.js
-const {
-  createRoom,
-  joinRoom,
-  checkRoom,
-  changeRoomSettings,
-  findRoom,
-  setInitialGamestate,
-  resetGamestate,
-  nextRound,
-  addBet,
-  removeBet,
-  clearBets,
-  clearNets,
-  calculateBets,
-  calculateNets,
-  checkBankrupt,
-  rollDice,
-  setReady,
-  allPlayersReady,
-  removePlayer,
-  addMessage,
-  resetTime,
-  countdown,
-} = require("./room");
+// Import game logic functions
+const GameManager = require("./gameManager");
+const { validateRoomInput, validateGameSettings } = require("./validators");
+const { ErrorTypes, GameError } = require("./errors");
 
-// Middleware: Bật CORS cho toàn bộ API
-app.use(
-  cors({
-    origin: "*", // Cho phép mọi domain
-    methods: ["GET", "POST", "PUT", "DELETE"], // Cho phép tất cả HTTP methods
-    allowedHeaders: ["Content-Type", "Authorization"], // Chỉ định các header được phép
-  })
-);
+// Initialize game manager
+const gameManager = new GameManager();
 
-// Middleware: Tự động parse JSON payload từ client
-app.use(express.json());
+// Middleware for error handling
+const socketErrorHandler = (socket, callback) => {
+  try {
+    callback();
+  } catch (error) {
+    logger.error('Socket error:', error);
+    socket.emit('error', { message: error.message });
+  }
+};
 
-// Middleware: Bỏ qua favicon.ico
-app.get("/favicon.ico", (req, res) => res.status(204));
+// Static file serving
+app.use(express.static(path.join(__dirname, "baucua-client/build")));
 
-// Serve static files trong chế độ production
+// Route handling based on environment
 if (process.env.NODE_ENV === "production") {
-  app.use(express.static(path.join(__dirname, "baucua-client/build")));
   app.get("*", (req, res) => {
-    res.sendFile(path.resolve(__dirname, "baucua-client/build", "index.html"));
+    res.sendFile(path.join(__dirname, "baucua-client/build/index.html"));
   });
 } else {
-  // Build/Development mode
-  app.use(express.static(path.join(__dirname, "baucua-client/public")));
   app.get("*", (req, res) => {
     res.sendFile(path.join(__dirname, "baucua-client/public/index.html"));
   });
 }
 
-// SOCKET HANDLER
+// Socket connection handler
 io.on("connection", (socket) => {
-  console.log(socket.id + " has just connected");
+  logger.info(`New connection: ${socket.id}`);
+  
+  // Store timeouts and intervals for cleanup
+  const timeouts = new Set();
+  const intervals = new Set();
 
-  // SOCKET HANDLER - HOSTING A ROOM
-  socket.on("host", ({ name, room }, callback) => {
-    socket.roomname = room;
+  // Utility function to safely set timeout
+  const safeSetTimeout = (callback, delay) => {
+    const timeout = setTimeout(callback, delay);
+    timeouts.add(timeout);
+    return timeout;
+  };
 
-    if (findRoom(room).length > 0) {
-      return callback("Unable to create the room.");
-    }
+  // Utility function to safely set interval
+  const safeSetInterval = (callback, delay) => {
+    const interval = setInterval(callback, delay);
+    intervals.add(interval);
+    return interval;
+  };
 
-    createRoom(socket.id, room);
-    const status = checkRoom(room);
-    if (status) {
-      return callback(status);
-    }
+  // Clean up function
+  const cleanup = () => {
+    timeouts.forEach(clearTimeout);
+    intervals.forEach(clearInterval);
+    timeouts.clear();
+    intervals.clear();
+  };
 
-    const user = joinRoom(socket.id, name, room);
-    if (user === null) return null;
-    socket.join(user.room);
-    callback();
-  });
+  // Host room handler
+  socket.on("host", async ({ name, room }, callback) => {
+    socketErrorHandler(socket, async () => {
+      // Validate input
+      validateRoomInput({ name, room });
 
-  // SOCKET HANDLER - JOINING A ROOM
-  socket.on("join", ({ name, room }, callback) => {
-    socket.roomname = room;
-    const user = joinRoom(socket.id, name, room);
-    if (user === null) return null;
-    socket.join(user.room);
-    callback();
-  });
-
-  // SOCKET HANDLER - ROOM SETUP
-  socket.on("roomsetup", () => {
-    const r = findRoom(socket.roomname)[0];
-    if (!r) return null;
-
-    io.to(socket.roomname).emit("roomdata", {
-      room: socket.roomname,
-      host: r.host,
-      settings: r.settings,
+      // Create and join room
+      const result = await gameManager.createAndJoinRoom(socket.id, name, room);
+      
+      socket.roomname = room;
+      socket.join(room);
+      
+      io.to(room).emit('roomdata', result.roomData);
+      io.to(room).emit('players', { players: result.players });
+      
+      callback();
     });
-
-    io.to(socket.roomname).emit("players", { players: r.players });
   });
 
-  // SOCKET HANDLER - GAME FLOW
-  socket.on("startgame", ({ balance }) => {
-    const gamestate = setInitialGamestate(socket.roomname, balance);
-    if (!gamestate) return null;
-    io.to(socket.roomname).emit("gamestart", { gamestate });
+  // Join room handler
+  socket.on("join", async ({ name, room }, callback) => {
+    socketErrorHandler(socket, async () => {
+      validateRoomInput({ name, room });
+      
+      const result = await gameManager.joinRoom(socket.id, name, room);
+      
+      socket.roomname = room;
+      socket.join(room);
+      
+      io.to(room).emit('players', { players: result.players });
+      
+      callback();
+    });
   });
 
-  socket.on("playagain", () => {
-    const gamestate = resetGamestate(socket.roomname);
-    if (!gamestate) return null;
-    io.to(socket.roomname).emit("gamerestart", { gamestate });
-  });
-
+  // Game round handler
   socket.on("roundstart", () => {
-    let current_time = resetTime(socket.roomname);
-    if (!current_time) return null;
+    socketErrorHandler(socket, async () => {
+      const room = socket.roomname;
+      let gameState = await gameManager.startRound(room);
+      
+      // Reset timer and clear dice
+      io.to(room).emit("timer", { current_time: gameState.time });
+      io.to(room).emit("cleardice");
+      io.to(room).emit("showround");
 
-    io.to(socket.roomname).emit("timer", { current_time });
-    io.to(socket.roomname).emit("cleardice");
-    io.to(socket.roomname).emit("showround");
+      // Round flow
+      const roundFlow = async () => {
+        try {
+          // Show round start
+          await new Promise(resolve => safeSetTimeout(resolve, 3000));
+          io.to(room).emit("hideround");
 
-    setTimeout(() => {
-      io.to(socket.roomname).emit("hideround");
-
-      let interval = setInterval(() => {
-        current_time = countdown(socket.roomname);
-        if (!current_time) {
-          clearInterval(interval);
-        } else if (current_time >= 0) {
-          io.to(socket.roomname).emit("timer", { current_time });
-        } else {
-          clearInterval(interval);
-          io.to(socket.roomname).emit("showtimesup");
-
-          setTimeout(() => {
-            io.to(socket.roomname).emit("hidetimesup");
-            const gamestate = rollDice(socket.roomname);
-            if (!gamestate) return null;
-
-            io.to(socket.roomname).emit("diceroll", {
-              die1: gamestate.dice[0],
-              die2: gamestate.dice[1],
-              die3: gamestate.dice[2],
-            });
-
-            setTimeout(() => {
-              let results = calculateNets(socket.roomname);
-              io.to(socket.roomname).emit("showresults", { results });
-
-              setTimeout(() => {
-                io.to(socket.roomname).emit("hideresults");
-                results = calculateBets(socket.roomname);
-                clearBets(socket.roomname);
-                clearNets(socket.roomname);
-
-                let round = nextRound(socket.roomname);
-                let bankrupt = checkBankrupt(socket.roomname);
-
-                if (round === -1 || bankrupt) {
-                  io.to(socket.roomname).emit("gameover", { results });
-                } else {
-                  io.to(socket.roomname).emit("nextround", { round });
-                }
-              }, 5000);
-            }, 5500);
-          }, 3000);
+          // Timer countdown
+          const timerInterval = safeSetInterval(async () => {
+            gameState = await gameManager.updateTime(room);
+            
+            if (gameState.time >= 0) {
+              io.to(room).emit("timer", { current_time: gameState.time });
+            } else {
+              clearInterval(timerInterval);
+              await handleRoundEnd(room);
+            }
+          }, 1000);
+        } catch (error) {
+          logger.error('Round flow error:', error);
+          cleanup();
         }
-      }, 1000);
-    }, 3000);
+      };
+
+      roundFlow();
+    });
   });
 
-  // SOCKET HANDLER - DISCONNECT
-  socket.on("disconnect", () => {
-    console.log(socket.id + " disconnected");
-    const player = removePlayer(socket.id, socket.roomname);
-    if (!player) return null;
+  // Handle round end logic
+  const handleRoundEnd = async (room) => {
+    try {
+      io.to(room).emit("showtimesup");
+      await new Promise(resolve => safeSetTimeout(resolve, 3000));
+      
+      // Roll dice and calculate results
+      const rollResult = await gameManager.rollAndCalculate(room);
+      
+      io.to(room).emit("diceroll", rollResult.dice);
+      await new Promise(resolve => safeSetTimeout(resolve, 5500));
+      
+      io.to(room).emit("showresults", { results: rollResult.results });
+      await new Promise(resolve => safeSetTimeout(resolve, 5000));
+      
+      // Update game state and check game end
+      const endResult = await gameManager.checkGameEnd(room);
+      
+      if (endResult.gameOver) {
+        io.to(room).emit("gameover", { results: endResult.results });
+      } else {
+        io.to(room).emit("nextround", { round: endResult.nextRound });
+      }
+    } catch (error) {
+      logger.error('Round end error:', error);
+      cleanup();
+    }
+  };
 
-    const r = findRoom(player.room)[0];
-    if (!r) return null;
+  // Betting handlers
+  socket.on("bet", ({ id, amount, animal }) => {
+    socketErrorHandler(socket, async () => {
+      const gameState = await gameManager.placeBet(socket.roomname, id, amount, animal);
+      io.to(socket.roomname).emit("newgamestate", { gameState });
+    });
+  });
 
-    io.to(player.room).emit("players", { players: r.players });
+  // Chat handler
+  socket.on("sendmessage", ({ id, name, message }) => {
+    socketErrorHandler(socket, async () => {
+      const chatbox = await gameManager.addMessage(id, socket.roomname, name, message);
+      io.to(socket.roomname).emit("chatbox", { chatbox });
+    });
+  });
 
-    const new_host = r.players[0]?.id;
-    r.host = new_host;
-    io.to(player.room).emit("newhost", { host: new_host });
-
-    if (r.active) {
-      io.to(player.room).emit("newgamestate", { gamestate: r });
+  // Disconnect handler
+  socket.on("disconnect", async () => {
+    try {
+      cleanup();
+      
+      const result = await gameManager.handlePlayerDisconnect(socket.id, socket.roomname);
+      
+      if (result) {
+        io.to(result.room).emit("players", { players: result.players });
+        if (result.newHost) {
+          io.to(result.room).emit("newhost", { host: result.newHost });
+        }
+        if (result.gameState) {
+          io.to(result.room).emit("newgamestate", { gameState: result.gameState });
+        }
+      }
+      
+      logger.info(`Disconnected: ${socket.id}`);
+    } catch (error) {
+      logger.error('Disconnect error:', error);
     }
   });
 });
 
-// Server listener
+// Error handling middleware
+app.use((err, req, res, next) => {
+  logger.error('Server error:', err);
+  res.status(500).send('Internal Server Error');
+});
+
+// Start server
 http.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+  logger.info(`Server running on port ${port}`);
 });

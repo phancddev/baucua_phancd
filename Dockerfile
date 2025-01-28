@@ -1,19 +1,35 @@
-# Sử dụng Node.js LTS
-FROM node:18.12.1
+# Backend Dockerfile
+# ./Dockerfile
 
-# Cài đặt thư mục làm việc
-WORKDIR /usr/src/app
+# Build stage
+FROM node:18-alpine AS builder
 
-# Sao chép package.json và cài đặt dependency
-COPY package.json package-lock.json ./
-RUN npm install
+# Add necessary packages
+RUN apk add --no-cache python3 make g++
 
-# Sao chép toàn bộ mã nguồn
+WORKDIR /app
+
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy source
 COPY . .
 
-# Mở cổng 9000 (backend) và 3000 (frontend)
-EXPOSE 9000
-EXPOSE 3000
+# Production stage
+FROM node:18-alpine
 
-# Khởi chạy server
-CMD ["npm", "run", "dev"]
+WORKDIR /app
+
+# Copy built assets from builder
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/. .
+
+ENV NODE_ENV=production
+ENV PORT=9000
+
+EXPOSE 9000 3000
+
+CMD ["npm", "run", "start"]
