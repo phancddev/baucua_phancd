@@ -206,98 +206,98 @@ io.on("connection", (socket) => {
   socket.on("roundstart", () => {
     let current_time = resetTime(socket.roomname);
     if (!current_time) return;
-
+  
     io.to(socket.roomname).emit("timer", { current_time });
     io.to(socket.roomname).emit("cleardice");
     io.to(socket.roomname).emit("showround");
-
+  
     setTimeout(() => {
       io.to(socket.roomname).emit("hideround");
-
+  
       const interval = setInterval(() => {
         const room = findRoom(socket.roomname)[0];
         if (!room) {
           clearInterval(interval);
           return;
         }
-
-        // Kiểm tra xem tất cả người chơi đã ready (bấm nút Bet) chưa
+  
+        // Kiểm tra xem tất cả người chơi đã ready chưa
         const allPlayersReady = room.players.every(player => 
           player.ready || player.bankrupt
         );
-
+  
         if (allPlayersReady) {
           clearInterval(interval);
           // Thông báo tất cả đã sẵn sàng
           io.to(room).emit("showallbetsin");
           
-          // Đợi một chút rồi mới bắt đầu quay
           setTimeout(() => {
             io.to(room).emit("hideallbetsin");
             handleRoundEnd(socket.roomname);
           }, 2000);
           return;
         }
-
+  
         current_time = countdown(socket.roomname);
-
+  
         if (!current_time) {
           clearInterval(interval);
         } else if (current_time >= 0) {
           io.to(socket.roomname).emit("timer", { current_time });
         } else {
           clearInterval(interval);
-          // Khi hết thời gian
+          // Khi hết thời gian, bỏ qua người chưa bet và tiếp tục
           io.to(room).emit("showtimesup");
           
           setTimeout(() => {
             io.to(room).emit("hidetimesup");
+            // Những người chưa bet sẽ tự động skip
             handleRoundEnd(socket.roomname);
           }, 2000);
         }
       }, 1000);
     }, 3000);
   });
-
+  
   const handleRoundEnd = (room) => {
     const gameRoom = findRoom(room)[0];
     if (!gameRoom) return;
-
+  
+    // Quay xúc xắc bất kể có người chưa bet
     const gamestate = rollDice(room);
     if (!gamestate) return;
-
-    // Emit kết quả xúc xắc
+  
     io.to(room).emit("diceroll", {
       die1: gamestate.dice[0],
       die2: gamestate.dice[1],
       die3: gamestate.dice[2],
     });
-
+  
     setTimeout(() => {
-      // Tính toán kết quả
+      // Chỉ tính toán kết quả cho những người đã bet
       const results = calculateNets(room);
       io.to(room).emit("showresults", { results });
-
+  
       setTimeout(() => {
         io.to(room).emit("hideresults");
         const finalResults = calculateBets(room);
+  
         let updatedGamestate = clearBets(room);
         if (!updatedGamestate) return;
         updatedGamestate = clearNets(room);
         if (!updatedGamestate) return;
-
+  
         // Reset ready state của tất cả người chơi
         updatedGamestate.players.forEach(player => {
           player.ready = false;
         });
-
+  
         io.to(room).emit("newgamestate", { gamestate: updatedGamestate });
-
-        // Kiểm tra vòng tiếp theo hoặc kết thúc game
+  
         const nextRoundNum = nextRound(room);
         const bankrupt = checkBankrupt(room);
         if (bankrupt === null) return;
-
+  
         if (nextRoundNum === -1 || bankrupt) {
           io.to(room).emit("gameover", { results: finalResults });
         } else {
@@ -306,7 +306,6 @@ io.on("connection", (socket) => {
       }, 5000);
     }, 5500);
   };
-
   // Betting handlers
   socket.on("bet", ({ id, amount, animal }) => {
     const gamestate = addBet(socket.roomname, id, amount, animal);
