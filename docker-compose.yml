@@ -12,7 +12,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=9000
-      - HOST=0.0.0.0  # Để đảm bảo server lắng nghe trên tất cả interfaces
+      - HOST=0.0.0.0
     volumes:
       - .:/app
       - /app/node_modules

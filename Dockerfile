@@ -1,35 +1,34 @@
-# Backend Dockerfile
-# ./Dockerfile
+root@30092024001-1:~/baucua_phancd# docker logs b135ebe13db1
 
-# Build stage
-FROM node:18-alpine AS builder
+> server@1.0.0 start
+> nodemon index.js
 
-# Add necessary packages
-RUN apk add --no-cache python3 make g++
+[nodemon] 3.1.9
+[nodemon] to restart at any time, enter `rs`
+[nodemon] watching path(s): *.*
+[nodemon] watching extensions: js,mjs,cjs,json
+[nodemon] starting `node index.js`
+node:internal/modules/cjs/loader:1143
+  throw err;
+  ^
 
-WORKDIR /app
+Error: Cannot find module 'winston'
+Require stack:
+- /app/index.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
+    at Module._load (node:internal/modules/cjs/loader:981:27)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at require (node:internal/modules/helpers:177:18)
+    at Object.<anonymous> (/app/index.js:6:17)
+    at Module._compile (node:internal/modules/cjs/loader:1364:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1422:10)
+    at Module.load (node:internal/modules/cjs/loader:1203:32)
+    at Module._load (node:internal/modules/cjs/loader:1019:12)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:128:12) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [ '/app/index.js' ]
+}
 
-COPY package*.json ./
-
-# Install dependencies
-RUN npm ci
-
-# Copy source
-COPY . .
-
-# Production stage
-FROM node:18-alpine
-
-WORKDIR /app
-
-# Copy built assets from builder
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/. .
-
-ENV NODE_ENV=production
-ENV PORT=9000
-
-EXPOSE 9000 3000
-
-CMD ["npm", "run", "start"]
+Node.js v18.20.6
+[nodemon] app crashed - waiting for file changes before starting...
+root@30092024001-1:~/baucua_phancd# 
