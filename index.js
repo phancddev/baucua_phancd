@@ -1,27 +1,30 @@
 const express = require("express");
-const app = express();
-const http = require("http").createServer(app);
+const cors = require("cors");
 const path = require("path");
-const cors = require('cors');
+const http = require("http");
+
+const app = express();
+const server = http.createServer(app);
 const port = process.env.PORT || 9000;
 
 // Sử dụng middleware
 app.use(cors());
 app.use(express.json());
 
-const io = require("socket.io")(http, {
+// Socket.io setup
+const io = require("socket.io")(server, {
   pingInterval: 25000,
   pingTimeout: 60000,
   cors: {
-    origin: "*",  // Cho phép tất cả origins trong development
+    origin: "*",
     methods: ["GET", "POST"],
-    credentials: true
+    credentials: true,
   },
-  transports: ['websocket', 'polling'],
-  allowEIO3: true
+  transports: ["websocket", "polling"],
+  allowEIO3: true,
 });
 
-// Import room functions
+// Import các hàm xử lý room
 const {
   createRoom,
   joinRoom,
@@ -50,7 +53,6 @@ const {
 // Static file declaration
 app.use(express.static(path.join(__dirname, "baucua-client/build")));
 
-// Production mode
 if (process.env.NODE_ENV === "production") {
   app.use(express.static(path.join(__dirname, "baucua-client/build")));
   app.get("*", (req, res) => {
@@ -64,111 +66,117 @@ if (process.env.NODE_ENV === "production") {
 
 // SOCKET HANDLER
 io.on("connection", (socket) => {
-  console.log(socket.id + " has just connected");
+  console.log(`Socket connected: ${socket.id}`);
 
-  // SOCKET HANDLER - HOSTING A ROOM
+  // Handle host room
   socket.on("host", ({ name, room }, callback) => {
     socket.roomname = room;
 
-    // Error checking to see if room already exists
     if (findRoom(room).length > 0) {
-      callback("Unable to create the room.");
+      console.log(`Room ${room} already exists.`);
+      callback("Room already exists.");
       return;
     }
 
-    // Create a new room
     createRoom(socket.id, room);
 
-    // Check that room was successfully created before joining
     const status = checkRoom(room);
     if (status) {
+      console.log(`Error creating room ${room}: ${status}`);
       callback(status);
       return;
     }
 
-    // Add socket to the room
     const user = joinRoom(socket.id, name, room);
-    if (user === null) {
-      callback("Error joining room");
+    if (!user) {
+      console.log(`Error joining room ${room}`);
+      callback("Error joining room.");
       return;
     }
-    
+
     socket.join(user.room);
+    console.log(`Room created: ${room} by ${socket.id}`);
     callback();
   });
 
-  // SOCKET HANDLER - JOINING A ROOM
+  // Handle join room
   socket.on("join", ({ name, room }, callback) => {
     socket.roomname = room;
 
-    // Check if room exists
     const status = checkRoom(room);
     if (status) {
+      console.log(`Error joining room ${room}: ${status}`);
       callback(status);
       return;
     }
 
-    // Add socket to specified room
     const user = joinRoom(socket.id, name, room);
-    if (user === null) {
-      callback("Error joining room");
+    if (!user) {
+      console.log(`Error joining room ${room}`);
+      callback("Error joining room.");
       return;
     }
-    
+
     socket.join(user.room);
+    console.log(`${name} joined room: ${room}`);
     callback();
   });
 
-  // SOCKET HANDLER - ROOM SETUP
+  // Handle room setup
   socket.on("roomsetup", () => {
-    const r = findRoom(socket.roomname)[0];
-    if (r === undefined) return;
+    const room = findRoom(socket.roomname)[0];
+    if (!room) return;
 
     io.to(socket.roomname).emit("roomdata", {
       room: socket.roomname,
-      host: r.host,
-      settings: r.settings,
+      host: room.host,
+      settings: room.settings,
     });
 
-    io.to(socket.roomname).emit("players", { players: r.players });
+    io.to(socket.roomname).emit("players", { players: room.players });
   });
 
-  // SOCKET HANDLER - GAME SETTINGS
+  // Handle game settings changes
   socket.on("timerchange", ({ timer }) => {
     const option = changeRoomSettings(socket.roomname, "time", timer);
-    if (option === null) return;
+    if (!option) return;
+
     io.to(socket.roomname).emit("timeropt", { timer: option });
   });
 
   socket.on("roundschange", ({ rounds }) => {
     const option = changeRoomSettings(socket.roomname, "rounds", rounds);
-    if (option === null) return;
+    if (!option) return;
+
     io.to(socket.roomname).emit("roundsopt", { rounds: option });
   });
 
   socket.on("balancechange", ({ balance }) => {
     const option = changeRoomSettings(socket.roomname, "balance", balance);
-    if (option === null) return;
+    if (!option) return;
+
     io.to(socket.roomname).emit("balanceopt", { balance: option });
   });
 
-  // SOCKET HANDLER - GAME STATES
+  // Handle game start
   socket.on("startgame", ({ balance }) => {
     const gamestate = setInitialGamestate(socket.roomname, balance);
-    if (gamestate === null) return;
+    if (!gamestate) return;
+
     io.to(socket.roomname).emit("gamestart", { gamestate });
   });
 
   socket.on("playagain", () => {
     const gamestate = resetGamestate(socket.roomname);
-    if (gamestate === null) return;
+    if (!gamestate) return;
+
     io.to(socket.roomname).emit("gamerestart", { gamestate });
   });
 
-  // SOCKET HANDLER - ROUND FLOW
+  // Handle round flow
   socket.on("roundstart", () => {
     let current_time = resetTime(socket.roomname);
-    if (current_time === null) return;
+    if (!current_time) return;
 
     io.to(socket.roomname).emit("timer", { current_time });
     io.to(socket.roomname).emit("cleardice");
@@ -179,8 +187,8 @@ io.on("connection", (socket) => {
 
       const interval = setInterval(() => {
         current_time = countdown(socket.roomname);
-        
-        if (current_time === null) {
+
+        if (!current_time) {
           clearInterval(interval);
         } else if (current_time >= 0) {
           io.to(socket.roomname).emit("timer", { current_time });
@@ -192,14 +200,13 @@ io.on("connection", (socket) => {
     }, 3000);
   });
 
-  // Helper function for round end logic
   const handleRoundEnd = (room) => {
     io.to(room).emit("showtimesup");
 
     setTimeout(() => {
       io.to(room).emit("hidetimesup");
-      let gamestate = rollDice(room);
-      if (gamestate === null) return;
+      const gamestate = rollDice(room);
+      if (!gamestate) return;
 
       io.to(room).emit("diceroll", {
         die1: gamestate.dice[0],
@@ -208,78 +215,39 @@ io.on("connection", (socket) => {
       });
 
       setTimeout(() => {
-        let results = calculateNets(room);
+        const results = calculateNets(room);
         io.to(room).emit("showresults", { results });
 
         setTimeout(() => {
           io.to(room).emit("hideresults");
-          results = calculateBets(room);
-          gamestate = clearBets(room);
-          if (gamestate === null) return;
-          gamestate = clearNets(room);
-          if (gamestate === null) return;
+          const updatedGamestate = clearBets(room);
+          if (!updatedGamestate) return;
 
-          io.to(room).emit("newgamestate", { gamestate });
-
-          let round = nextRound(room);
-          let bankrupt = checkBankrupt(room);
-          if (bankrupt === null) return;
-
-          if (round === -1 || bankrupt) {
-            io.to(room).emit("gameover", { results });
-          } else {
-            io.to(room).emit("nextround", { round });
-          }
+          io.to(room).emit("newgamestate", { gamestate: updatedGamestate });
         }, 5000);
       }, 5500);
     }, 3000);
   };
 
-  // SOCKET HANDLER - BETTING
-  socket.on("bet", ({ id, amount, animal }) => {
-    const gamestate = addBet(socket.roomname, id, amount, animal);
-    if (gamestate === null) return;
-    io.to(socket.roomname).emit("newgamestate", { gamestate });
-  });
-
-  socket.on("unbet", ({ id, amount, animal }) => {
-    const gamestate = removeBet(socket.roomname, id, amount, animal);
-    if (gamestate === null) return;
-    io.to(socket.roomname).emit("newgamestate", { gamestate });
-  });
-
-  // SOCKET HANDLER - CHAT
-  socket.on("sendmessage", ({ id, name, message }) => {
-    const chatbox = addMessage(id, socket.roomname, name, message);
-    if (chatbox === null) return;
-    io.to(socket.roomname).emit("chatbox", { chatbox });
-  });
-
-  // SOCKET HANDLER - DISCONNECT
+  // Handle disconnect
   socket.on("disconnect", () => {
-    console.log(socket.id + " has disconnected");
-
+    console.log(`Socket disconnected: ${socket.id}`);
     const player = removePlayer(socket.id, socket.roomname);
-    if (player === null) return;
+    if (!player) return;
 
-    const r = findRoom(player.room)[0];
-    if (r === undefined) return;
+    const room = findRoom(player.room)[0];
+    if (!room) return;
 
-    io.to(player.room).emit("players", { players: r.players });
+    io.to(player.room).emit("players", { players: room.players });
 
-    if (r.players.length > 0) {
-      const new_host = r.players[0].id;
-      r.host = new_host;
-      io.to(player.room).emit("newhost", { host: r.host });
-
-      if (r.active) {
-        io.to(player.room).emit("newgamestate", { gamestate: r });
-      }
+    if (room.players.length > 0) {
+      room.host = room.players[0].id;
+      io.to(player.room).emit("newhost", { host: room.host });
     }
   });
 });
 
-// Server listener
-http.listen(port, '0.0.0.0', () => {
+// Start server
+server.listen(port, "0.0.0.0", () => {
   console.log(`Server listening on port ${port}`);
 });
