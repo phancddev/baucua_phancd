@@ -11,50 +11,54 @@ function JoinModal(props) {
 
   const [name, setName] = useState("");
   const [room, setRoom] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
   const onChangeName = (event) => {
     setName(event.target.value);
   };
 
   const onChangeRoom = (event) => {
-    setRoom(event.target.value);
+    setRoom(event.target.value.toUpperCase()); // Chuyển về chữ hoa
   };
 
   const handleJoinClick = () => {
-    var name_input = document.getElementById("name-input");
-    var room_input = document.getElementById("room-input");
+    const nameInput = document.getElementById("name-input");
+    const roomInput = document.getElementById("room-input");
 
-    // Error handling if name and room are empty
-    if (name !== "" && room !== "") {
-      document.body.style.overflow = "auto";
-      socket.emit("check", { room }, (error) => {
-        if (error) {
-          props.onInvalidCode(error);
-        } else {
-          socket.emit("join", { name, room }, () => {
+    // Kiểm tra nếu name hoặc room bị trống
+    if (name.trim() === "" || room.trim() === "") {
+      setErrorMessage("Please enter both your name and a room code.");
+      if (name.trim() === "") nameInput.classList.add("join-modal-input-error");
+      if (room.trim() === "") roomInput.classList.add("join-modal-input-error");
+      return;
+    }
+
+    // Reset class nếu người dùng nhập lại
+    nameInput.classList.remove("join-modal-input-error");
+    roomInput.classList.remove("join-modal-input-error");
+
+    console.log("🔄 Checking room availability:", room);
+
+    // Kiểm tra xem phòng có tồn tại hay không
+    socket.emit("check", { room }, (error) => {
+      if (error) {
+        setErrorMessage(error);
+        console.log("❌ Room check failed:", error);
+      } else {
+        console.log("✅ Room exists, joining...");
+
+        // Gửi yêu cầu join room
+        socket.emit("join", { name, room }, (response) => {
+          if (response) {
+            setErrorMessage(response);
+            console.log("❌ Join failed:", response);
+          } else {
+            console.log("✅ Successfully joined room:", room);
             props.onJoinClick();
-          });
-        }
-      });
-    }
-
-    // Error handling if name input is empty
-    if (name === "") {
-      name_input.classList.remove("join-modal-input");
-      name_input.classList.add("join-modal-input-error");
-    } else {
-      name_input.classList.remove("join-modal-input-error");
-      name_input.classList.add("join-modal-input");
-    }
-
-    // Error handling if room input is empty
-    if (room === "") {
-      room_input.classList.remove("join-modal-input");
-      room_input.classList.add("join-modal-input-error");
-    } else {
-      room_input.classList.remove("join-modal-input-error");
-      room_input.classList.add("join-modal-input");
-    }
+          }
+        });
+      }
+    });
   };
 
   const onKeyUp = (event) => {
@@ -72,6 +76,9 @@ function JoinModal(props) {
         size="4x"
       />
       <p className="join-modal-title">Join a room.</p>
+      
+      {errorMessage && <p className="join-modal-error">{errorMessage}</p>}
+
       <input
         id="name-input"
         type="text"
