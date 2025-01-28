@@ -1,15 +1,30 @@
 const express = require("express");
-const app = express();
-const http = require("http").createServer(app);
+const cors = require("cors");
 const path = require("path");
+const http = require("http");
+
+const app = express();
+const server = http.createServer(app);
 const port = process.env.PORT || 9000;
 
-const io = require("socket.io")(http, {
+// Sử dụng middleware
+app.use(cors());
+app.use(express.json());
+
+// Socket.io setup
+const io = require("socket.io")(server, {
   pingInterval: 25000,
   pingTimeout: 60000,
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+  transports: ["websocket", "polling"],
+  allowEIO3: true,
 });
 
-// Room.js functions
+// Import các hàm xử lý room
 const {
   createRoom,
   joinRoom,
@@ -38,332 +53,201 @@ const {
 // Static file declaration
 app.use(express.static(path.join(__dirname, "baucua-client/build")));
 
-// Production mode
 if (process.env.NODE_ENV === "production") {
   app.use(express.static(path.join(__dirname, "baucua-client/build")));
   app.get("*", (req, res) => {
-    res.sendFile(path.join((__dirname = "baucua-client/build/index.html")));
+    res.sendFile(path.join(__dirname, "baucua-client/build/index.html"));
+  });
+} else {
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(__dirname, "baucua-client/public/index.html"));
   });
 }
 
-// Build/Development mode
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "baucua-client/public/index.html"));
-});
-
 // SOCKET HANDLER
 io.on("connection", (socket) => {
-  console.log(socket.id + " has just connected");
+  console.log(`Socket connected: ${socket.id}`);
 
-  // SOCKET HANDLER - HOSTING A ROOM
+  // Handle host room
   socket.on("host", ({ name, room }, callback) => {
     socket.roomname = room;
 
-    // Error checking to see if room already exists
     if (findRoom(room).length > 0) {
-      callback("Unable to create the room.");
+      console.log(`Room ${room} already exists.`);
+      callback("Room already exists.");
+      return;
     }
 
-    // Create a new room
     createRoom(socket.id, room);
-    callback();
 
-    // Check that room was successfully created before joining
     const status = checkRoom(room);
     if (status) {
+      console.log(`Error creating room ${room}: ${status}`);
       callback(status);
+      return;
     }
 
-    // Add socket to the room
     const user = joinRoom(socket.id, name, room);
-    if (user === null) return null;
+    if (!user) {
+      console.log(`Error joining room ${room}`);
+      callback("Error joining room.");
+      return;
+    }
+
     socket.join(user.room);
+    console.log(`Room created: ${room} by ${socket.id}`);
     callback();
   });
 
-  // SOCKET HANDLER - JOINING A ROOM
+  // Handle join room
   socket.on("join", ({ name, room }, callback) => {
     socket.roomname = room;
 
-    // Add socket to specified room
+    const status = checkRoom(room);
+    if (status) {
+      console.log(`Error joining room ${room}: ${status}`);
+      callback(status);
+      return;
+    }
+
     const user = joinRoom(socket.id, name, room);
-    if (user === null) return null;
+    if (!user) {
+      console.log(`Error joining room ${room}`);
+      callback("Error joining room.");
+      return;
+    }
+
     socket.join(user.room);
+    console.log(`${name} joined room: ${room}`);
     callback();
   });
 
-  // SOCKET HANDLER - ERROR CHECKING ROOM CODE
-  socket.on("check", ({ room }, callback) => {
-    const status = checkRoom(room);
-    if (status) {
-      callback(status);
-    } else {
-      callback();
-    }
-  });
-
-  // SOCKET HANDLER - SETUP ROOM ON HOST OR JOIN LOBBY
+  // Handle room setup
   socket.on("roomsetup", () => {
-    const r = findRoom(socket.roomname)[0];
-    if (r === undefined) return null;
+    const room = findRoom(socket.roomname)[0];
+    if (!room) return;
 
     io.to(socket.roomname).emit("roomdata", {
       room: socket.roomname,
-      host: r.host,
-      settings: r.settings,
+      host: room.host,
+      settings: room.settings,
     });
 
-    io.to(socket.roomname).emit("players", { players: r.players });
+    io.to(socket.roomname).emit("players", { players: room.players });
   });
 
-  // SOCKET HANDLER - SETTINGS
+  // Handle game settings changes
   socket.on("timerchange", ({ timer }) => {
     const option = changeRoomSettings(socket.roomname, "time", timer);
-    if (option === null) return null;
+    if (!option) return;
+
     io.to(socket.roomname).emit("timeropt", { timer: option });
   });
+
   socket.on("roundschange", ({ rounds }) => {
     const option = changeRoomSettings(socket.roomname, "rounds", rounds);
-    if (option === null) return null;
+    if (!option) return;
+
     io.to(socket.roomname).emit("roundsopt", { rounds: option });
   });
+
   socket.on("balancechange", ({ balance }) => {
     const option = changeRoomSettings(socket.roomname, "balance", balance);
-    if (option === null) return null;
+    if (!option) return;
+
     io.to(socket.roomname).emit("balanceopt", { balance: option });
   });
 
-  // SOCKET HANDLER - STARTING OR RESTARTING A GAME
+  // Handle game start
   socket.on("startgame", ({ balance }) => {
     const gamestate = setInitialGamestate(socket.roomname, balance);
-    if (gamestate === null) return null;
+    if (!gamestate) return;
+
     io.to(socket.roomname).emit("gamestart", { gamestate });
   });
+
   socket.on("playagain", () => {
     const gamestate = resetGamestate(socket.roomname);
-    if (gamestate === null) return null;
+    if (!gamestate) return;
+
     io.to(socket.roomname).emit("gamerestart", { gamestate });
   });
 
-  // SOCKET HANDLER - ROUND FLOW
+  // Handle round flow
   socket.on("roundstart", () => {
-    // Clear the dice and restart the time at the start of each round
     let current_time = resetTime(socket.roomname);
-    if (current_time === null) return null;
+    if (!current_time) return;
 
     io.to(socket.roomname).emit("timer", { current_time });
     io.to(socket.roomname).emit("cleardice");
     io.to(socket.roomname).emit("showround");
 
-    // Start the round
     setTimeout(() => {
       io.to(socket.roomname).emit("hideround");
 
-      // Set interval for the timer to go off every second
-      let interval = setInterval(() => {
+      const interval = setInterval(() => {
         current_time = countdown(socket.roomname);
-        if (current_time === null) {
+
+        if (!current_time) {
           clearInterval(interval);
         } else if (current_time >= 0) {
           io.to(socket.roomname).emit("timer", { current_time });
         } else {
-          // continue post-betting game flow
           clearInterval(interval);
-          io.to(socket.roomname).emit("showtimesup");
-
-          // Roll the dice
-          setTimeout(() => {
-            io.to(socket.roomname).emit("hidetimesup");
-
-            let gamestate = rollDice(socket.roomname);
-            if (gamestate === null) return null;
-
-            io.to(socket.roomname).emit("diceroll", {
-              die1: gamestate.dice[0],
-              die2: gamestate.dice[1],
-              die3: gamestate.dice[2],
-            });
-
-            // Calculate the wins and losses
-            setTimeout(() => {
-              let results = calculateNets(socket.roomname);
-              io.to(socket.roomname).emit("showresults", { results });
-
-              // Calculate the total scores and update the gamestate
-              setTimeout(() => {
-                io.to(socket.roomname).emit("hideresults");
-
-                results = calculateBets(socket.roomname);
-
-                gamestate = clearBets(socket.roomname);
-                if (gamestate === null) return null;
-                gamestate = clearNets(socket.roomname);
-                if (gamestate === null) return null;
-
-                // Send new gamestate to clients after calculations
-                io.to(socket.roomname).emit("newgamestate", {
-                  gamestate,
-                });
-
-                // Start the next round or end the game
-                let round = nextRound(socket.roomname);
-                let bankrupt = checkBankrupt(socket.roomname);
-                if (bankrupt === null) return null;
-
-                if (round === -1 || bankrupt) {
-                  io.to(socket.roomname).emit("gameover", { results });
-                } else {
-                  io.to(socket.roomname).emit("nextround", { round });
-                }
-              }, 5000);
-            }, 5500);
-          }, 3000);
+          handleRoundEnd(socket.roomname);
         }
       }, 1000);
     }, 3000);
   });
 
-  // SOCKET HANDLER - ROUND FLOW AFTER LOCKING IN BETS
-  socket.on("readyplayer", () => {
-    let gamestate = setReady(socket.roomname, socket.id);
-    if (gamestate === null) return null;
+  const handleRoundEnd = (room) => {
+    io.to(room).emit("showtimesup");
 
-    io.to(socket.roomname).emit("newgamestate", { gamestate });
+    setTimeout(() => {
+      io.to(room).emit("hidetimesup");
+      const gamestate = rollDice(room);
+      if (!gamestate) return;
 
-    // If all players are ready, the dice roll begins
-    const all_ready = allPlayersReady(socket.roomname);
-    if (gamestate === null) return null;
+      io.to(room).emit("diceroll", {
+        die1: gamestate.dice[0],
+        die2: gamestate.dice[1],
+        die3: gamestate.dice[2],
+      });
 
-    if (all_ready) {
-      io.to(socket.roomname).emit("showallbetsin");
-
-      // Roll the dice
       setTimeout(() => {
-        io.to(socket.roomname).emit("hideallbetsin");
+        const results = calculateNets(room);
+        io.to(room).emit("showresults", { results });
 
-        let gamestate = rollDice(socket.roomname);
-        if (gamestate === null) return null;
-
-        io.to(socket.roomname).emit("diceroll", {
-          die1: gamestate.dice[0],
-          die2: gamestate.dice[1],
-          die3: gamestate.dice[2],
-        });
-
-        // Calculate the wins and losses
         setTimeout(() => {
-          let results = calculateNets(socket.roomname);
-          io.to(socket.roomname).emit("showresults", { results });
+          io.to(room).emit("hideresults");
+          const updatedGamestate = clearBets(room);
+          if (!updatedGamestate) return;
 
-          // Calculate the total scores and update the gamestate
-          setTimeout(() => {
-            io.to(socket.roomname).emit("hideresults");
+          io.to(room).emit("newgamestate", { gamestate: updatedGamestate });
+        }, 5000);
+      }, 5500);
+    }, 3000);
+  };
 
-            results = calculateBets(socket.roomname);
-
-            gamestate = clearBets(socket.roomname);
-            if (gamestate === null) return null;
-            gamestate = clearNets(socket.roomname);
-            if (gamestate === null) return null;
-
-            // Send new gamestate to clients after calculations
-            io.to(socket.roomname).emit("newgamestate", {
-              gamestate,
-            });
-
-            // Start the next round or end the game
-            let round = nextRound(socket.roomname);
-            let bankrupt = checkBankrupt(socket.roomname);
-            if (bankrupt === null) return null;
-
-            if (round === -1 || bankrupt) {
-              io.to(socket.roomname).emit("gameover", { results });
-            } else {
-              io.to(socket.roomname).emit("nextround", { round });
-            }
-          }, 5000);
-        }, 5500);
-      }, 3000);
-    }
-  });
-
-  // SOCKET HANDLER - BETTING
-  socket.on("bet", ({ id, amount, animal }) => {
-    const gamestate = addBet(socket.roomname, id, amount, animal);
-    if (gamestate === null) return null;
-    io.to(socket.roomname).emit("newgamestate", { gamestate });
-  });
-  socket.on("unbet", ({ id, amount, animal }) => {
-    const gamestate = removeBet(socket.roomname, id, amount, animal);
-    if (gamestate === null) return null;
-    io.to(socket.roomname).emit("newgamestate", { gamestate });
-  });
-
-  // SOCKET HANDLER - CHAT
-  socket.on("sendmessage", ({ id, name, message }) => {
-    const chatbox = addMessage(id, socket.roomname, name, message);
-    if (chatbox === null) return null;
-    io.to(socket.roomname).emit("chatbox", { chatbox });
-  });
-
-  // SOCKET HANDLER - REMOVE PLAYER FROM ROOM
-  socket.on("removeplayer", () => {
-    // Remove the player from the room
-    const player = removePlayer(socket.id, socket.roomname);
-    if (player === null) return null;
-
-    // Update the room
-    const r = findRoom(player.room)[0];
-    if (r === undefined) return null;
-
-    // New player list
-    io.to(player.room).emit("players", {
-      players: r.players,
-    });
-
-    // New host if last host has left
-    const new_host = r.players[0].id;
-    r.host = new_host;
-    io.to(player.room).emit("newhost", { host: r.host });
-
-    // New gamestate
-    if (r.active) {
-      const gamestate = r;
-      io.to(player.room).emit("newgamestate", { gamestate });
-    }
-  });
-
-  // SOCKET HANDLER - DISCONNECT
+  // Handle disconnect
   socket.on("disconnect", () => {
-    console.log(socket.id + " had left");
-
-    // Remove the player from the room
+    console.log(`Socket disconnected: ${socket.id}`);
     const player = removePlayer(socket.id, socket.roomname);
-    if (player === null) return null;
+    if (!player) return;
 
-    // Update the room
-    const r = findRoom(player.room)[0];
-    if (r === undefined) return null;
+    const room = findRoom(player.room)[0];
+    if (!room) return;
 
-    // New player list
-    io.to(player.room).emit("players", {
-      players: r.players,
-    });
+    io.to(player.room).emit("players", { players: room.players });
 
-    // New host if last host has left
-    const new_host = r.players[0].id;
-    r.host = new_host;
-    io.to(player.room).emit("newhost", { host: r.host });
-
-    // New gamestate
-    if (r.active) {
-      const gamestate = r;
-      io.to(player.room).emit("newgamestate", { gamestate });
+    if (room.players.length > 0) {
+      room.host = room.players[0].id;
+      io.to(player.room).emit("newhost", { host: room.host });
     }
   });
 });
 
-// Server listener
-http.listen(port, () => {
+// Start server
+server.listen(port, "0.0.0.0", () => {
   console.log(`Server listening on port ${port}`);
 });
