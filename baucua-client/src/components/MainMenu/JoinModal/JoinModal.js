@@ -18,34 +18,24 @@ function JoinModal(props) {
   };
 
   const onChangeRoom = (event) => {
-    setRoom(event.target.value.toUpperCase()); // Chuyển về chữ hoa
+    setRoom(event.target.value.toUpperCase()); // Chuyển về chữ hoa để tránh sai lệch
   };
 
   const handleJoinClick = () => {
-    const nameInput = document.getElementById("name-input");
-    const roomInput = document.getElementById("room-input");
-
-    // Kiểm tra nếu name hoặc room bị trống
     if (name.trim() === "" || room.trim() === "") {
       setErrorMessage("Please enter both your name and a room code.");
-      if (name.trim() === "") nameInput.classList.add("join-modal-input-error");
-      if (room.trim() === "") roomInput.classList.add("join-modal-input-error");
       return;
     }
 
-    // Reset class nếu người dùng nhập lại
-    nameInput.classList.remove("join-modal-input-error");
-    roomInput.classList.remove("join-modal-input-error");
-
     console.log("🔄 Checking room availability:", room);
 
-    // Kiểm tra xem phòng có tồn tại hay không
+    // Kiểm tra xem room có tồn tại không
     socket.emit("check", { room }, (error) => {
       if (error) {
         setErrorMessage(error);
         console.log("❌ Room check failed:", error);
       } else {
-        console.log("✅ Room exists, joining...");
+        console.log("✅ Room exists, attempting to join...");
 
         // Gửi yêu cầu join room
         socket.emit("join", { name, room }, (response) => {
@@ -61,12 +51,6 @@ function JoinModal(props) {
     });
   };
 
-  const onKeyUp = (event) => {
-    if (event.key === "Enter") {
-      handleJoinClick();
-    }
-  };
-
   return (
     <div className="join-modal">
       <FontAwesomeIcon
@@ -80,22 +64,17 @@ function JoinModal(props) {
       {errorMessage && <p className="join-modal-error">{errorMessage}</p>}
 
       <input
-        id="name-input"
         type="text"
         className="join-modal-input"
         placeholder="Enter your name"
-        onKeyUp={onKeyUp}
         onChange={onChangeName}
         maxLength="12"
         autoComplete="off"
       />
       <input
-        id="room-input"
         type="text"
-        style={{ marginTop: "1rem" }}
         className="join-modal-input"
         placeholder="Enter room code"
-        onKeyUp={onKeyUp}
         onChange={onChangeRoom}
         maxLength="6"
         autoComplete="off"
