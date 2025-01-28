@@ -1,34 +1,51 @@
-root@30092024001-1:~/baucua_phancd# docker logs b135ebe13db1
+# Dockerfile
+FROM node:18-alpine
 
-> server@1.0.0 start
-> nodemon index.js
+# Add necessary packages
+RUN apk add --no-cache python3 make g++
 
-[nodemon] 3.1.9
-[nodemon] to restart at any time, enter `rs`
-[nodemon] watching path(s): *.*
-[nodemon] watching extensions: js,mjs,cjs,json
-[nodemon] starting `node index.js`
-node:internal/modules/cjs/loader:1143
-  throw err;
-  ^
+WORKDIR /app
 
-Error: Cannot find module 'winston'
-Require stack:
-- /app/index.js
-    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
-    at Module._load (node:internal/modules/cjs/loader:981:27)
-    at Module.require (node:internal/modules/cjs/loader:1231:19)
-    at require (node:internal/modules/helpers:177:18)
-    at Object.<anonymous> (/app/index.js:6:17)
-    at Module._compile (node:internal/modules/cjs/loader:1364:14)
-    at Module._extensions..js (node:internal/modules/cjs/loader:1422:10)
-    at Module.load (node:internal/modules/cjs/loader:1203:32)
-    at Module._load (node:internal/modules/cjs/loader:1019:12)
-    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:128:12) {
-  code: 'MODULE_NOT_FOUND',
-  requireStack: [ '/app/index.js' ]
-}
+# Copy package files first
+COPY package*.json ./
 
-Node.js v18.20.6
-[nodemon] app crashed - waiting for file changes before starting...
-root@30092024001-1:~/baucua_phancd# 
+# Install all needed dependencies
+RUN npm install && \
+    npm install express-rate-limit@latest \
+                winston@latest \
+                nodemon@latest -g && \
+    npm install --save-dev nodemon
+
+# Copy rest of the application
+COPY . .
+
+# Expose ports
+EXPOSE 9000 3000
+
+# Start command
+CMD ["npm", "run", "start"]
+
+# docker-compose.yml
+version: "3.9"
+
+services:
+  baucua-app:
+    build: .
+    container_name: baucua-game
+    restart: unless-stopped
+    ports:
+      - "3000:3000"  # Frontend
+      - "9000:9000"  # Backend & WebSocket
+    environment:
+      - NODE_ENV=production
+      - PORT=9000
+      - HOST=0.0.0.0
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - baucua-network
+
+networks:
+  baucua-network:
+    driver: bridge
