@@ -6,15 +6,21 @@ services:
     container_name: baucua-game
     restart: unless-stopped
     ports:
-      - "3000:3000"
-      - "9000:9000"
+      - "3000:3000" # Frontend React
+      - "9000:9000" # Backend Express + WebSocket
     environment:
       - NODE_ENV=development
-      - PORT=9000
-      - REACT_APP_SOCKET_URL=http://167.235.150.190:9000
+      - PORT=9000 # Backend Port
+      - REACT_APP_SOCKET_URL=http://baucua-game:9000 # Backend WebSocket URL
       - HOST=0.0.0.0
       - WDS_SOCKET_PORT=0
     volumes:
       - .:/app
       - /app/node_modules
       - /app/baucua-client/node_modules
+    networks:
+      - baucua-network
+
+networks:
+  baucua-network:
+    driver: bridge

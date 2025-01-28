@@ -8,31 +8,27 @@ import MainMenu from "components/MainMenu/MainMenu";
 import Room from "components/Room/Room";
 
 // Cấu hình endpoint
-const ENDPOINT = process.env.NODE_ENV === 'production' 
-  ? "http://167.235.150.190:9000"  // IP VPS của bạn
-  : "http://localhost:9000";
+const ENDPOINT = process.env.REACT_APP_SOCKET_URL || "http://localhost:9000";
 
 // Cấu hình socket
 const socket = io(ENDPOINT, {
   transports: ['websocket', 'polling'],
-  cors: {
-    origin: "*",
-    credentials: true
-  },
   reconnection: true,
   reconnectionAttempts: 5,
-  reconnectionDelay: 1000
+  reconnectionDelay: 1000,
 });
 
 function App() {
-  const [renderView, setRender] = useState(0);
+  const [renderView, setRender] = useState(0); // 0: MainMenu, 1: Room
   const [connected, setConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState(null);
 
   useEffect(() => {
-    // Xử lý socket events
+    // Xử lý sự kiện socket
     socket.on('connect', () => {
       console.log('Connected to server');
       setConnected(true);
+      setConnectionError(null);
     });
 
     socket.on('disconnect', () => {
@@ -41,7 +37,8 @@ function App() {
     });
 
     socket.on('connect_error', (error) => {
-      console.log('Connection error:', error);
+      console.error('Connection error:', error);
+      setConnectionError(error.message || 'Could not connect to server.');
     });
 
     // Cleanup khi component unmount
@@ -64,26 +61,34 @@ function App() {
     setRender(1);
   };
 
-  // Render loading khi chưa kết nối được
+  if (!connected && connectionError) {
+    return (
+      <div>
+        <h1>Connection Error</h1>
+        <p>{connectionError}</p>
+        <button onClick={() => window.location.reload()}>Retry</button>
+      </div>
+    );
+  }
+
   if (!connected) {
-    return <div>Connecting to server...</div>;
+    return (
+      <div>
+        <h1>Connecting to server...</h1>
+      </div>
+    );
   }
 
   // Render views
-  switch (renderView) {
-    case 1:
-      return (
-        <SocketContext.Provider value={socket}>
-          <Room onRenderMainMenu={renderMainMenu} />
-        </SocketContext.Provider>
-      );
-    default:
-      return (
-        <SocketContext.Provider value={socket}>
-          <MainMenu onRenderRoom={renderRoom} />
-        </SocketContext.Provider>
-      );
-  }
+  return (
+    <SocketContext.Provider value={socket}>
+      {renderView === 1 ? (
+        <Room onRenderMainMenu={renderMainMenu} />
+      ) : (
+        <MainMenu onRenderRoom={renderRoom} />
+      )}
+    </SocketContext.Provider>
+  );
 }
 
 export default App;
