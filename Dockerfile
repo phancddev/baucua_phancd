@@ -1,4 +1,3 @@
-# Dockerfile
 FROM node:18-alpine
 
 # Add necessary packages
@@ -24,28 +23,3 @@ EXPOSE 9000 3000
 
 # Start command
 CMD ["npm", "run", "start"]
-
-# docker-compose.yml
-version: "3.9"
-
-services:
-  baucua-app:
-    build: .
-    container_name: baucua-game
-    restart: unless-stopped
-    ports:
-      - "3000:3000"  # Frontend
-      - "9000:9000"  # Backend & WebSocket
-    environment:
-      - NODE_ENV=production
-      - PORT=9000
-      - HOST=0.0.0.0
-    volumes:
-      - .:/app
-      - /app/node_modules
-    networks:
-      - baucua-network
-
-networks:
-  baucua-network:
-    driver: bridge
