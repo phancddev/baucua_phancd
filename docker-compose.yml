@@ -13,7 +13,7 @@ services:
       - PORT=9000 # Backend Port
       - REACT_APP_SOCKET_URL=http://167.235.150.190:9000 # Backend WebSocket URL
       - HOST=0.0.0.0
-      - WDS_SOCKET_PORT=0
+      - WDS_SOCKET_PORT=3000
     volumes:
       - .:/app
       - /app/node_modules
