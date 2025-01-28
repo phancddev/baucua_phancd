@@ -478,6 +478,37 @@ const allReady = (gameroom) => {
 
   return true;
 };
+// Thêm vào file room.js
+const randomNewHost = (room) => {
+  const gameroom = findRoom(room)[0];
+  if (!gameroom || gameroom.players.length === 0) return null;
+  
+  // Random một người chơi làm host
+  const randomIndex = Math.floor(Math.random() * gameroom.players.length);
+  gameroom.host = gameroom.players[randomIndex].id;
+  return gameroom.host;
+};
+
+const endGame = (room) => {
+  const gameroom = findRoom(room)[0];
+  if (!gameroom) return null;
+
+  gameroom.active = false;
+  gameroom.bets = [];
+  gameroom.dice = [];
+  gameroom.round = 1;
+
+  // Reset all players
+  gameroom.players.forEach(player => {
+    player.total = 0;
+    player.net = 0;
+    player.rank = 1;
+    player.bankrupt = false;
+    player.ready = false;
+  });
+
+  return gameroom;
+};
 
 // Module Exports
 module.exports = {
@@ -503,4 +534,6 @@ module.exports = {
   addMessage,
   resetTime,
   countdown,
+  randomNewHost,
+  endGame
 };

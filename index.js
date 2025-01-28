@@ -48,6 +48,8 @@ const {
   addMessage,
   resetTime,
   countdown,
+  randomNewHost,
+  endGame
 } = require("./room");
 
 // Static files
@@ -192,15 +194,20 @@ io.on("connection", (socket) => {
 
   // Game start handlers
   socket.on("startgame", ({ balance }) => {
+    const room = findRoom(socket.roomname)[0];
+    if (!room) return;
+  
+    // Kiểm tra số lượng người chơi tối thiểu
+    if (room.players.length < 2) {
+      io.to(socket.roomname).emit("error", { 
+        message: "Need at least 2 players to start game" 
+      });
+      return;
+    }
+  
     const gamestate = setInitialGamestate(socket.roomname, balance);
     if (!gamestate) return;
     io.to(socket.roomname).emit("gamestart", { gamestate });
-  });
-
-  socket.on("playagain", () => {
-    const gamestate = resetGamestate(socket.roomname);
-    if (!gamestate) return;
-    io.to(socket.roomname).emit("gamerestart", { gamestate });
   });
   // Round handling
 socket.on("roundstart", () => {
@@ -330,25 +337,50 @@ const handleRoundEnd = (room) => {
   });
 
   // Disconnect handler
-  socket.on("disconnect", () => {
-    console.log(`Socket disconnected: ${socket.id}`);
-    const player = removePlayer(socket.id, socket.roomname);
-    if (!player) return;
+// Disconnect handler
+socket.on("disconnect", () => {
+  console.log(`Socket disconnected: ${socket.id}`);
+  
+  const player = removePlayer(socket.id, socket.roomname);
+  if (!player) return;
 
-    const room = findRoom(player.room)[0];
-    if (!room) return;
+  const room = findRoom(player.room)[0];
+  if (!room) return;
 
-    io.to(player.room).emit("players", { players: room.players });
+  // Nếu không còn người chơi nào
+  if (room.players.length === 0) {
+    console.log(`Room ${room.roomId} is empty, removing room`);
+    return;
+  }
 
-    if (room.players.length > 0) {
-      room.host = room.players[0].id;
-      io.to(player.room).emit("newhost", { host: room.host });
-
-      if (room.active) {
-        io.to(player.room).emit("newgamestate", { gamestate: room });
-      }
+  // Nếu chỉ còn 1 người chơi hoặc game đang active
+  if ((room.players.length === 1 || room.active) && room.players.length < 2) {
+    console.log(`Not enough players in room ${room.roomId}, ending game`);
+    const gamestate = endGame(player.room);
+    if (gamestate) {
+      io.to(player.room).emit("gameover", { 
+        message: "Game ended due to insufficient players"
+      });
     }
-  });
+  }
+
+  // Nếu người disconnect là host, random host mới
+  if (socket.id === room.host) {
+    const newHost = randomNewHost(player.room);
+    if (newHost) {
+      console.log(`New host assigned in room ${room.roomId}: ${newHost}`);
+      io.to(player.room).emit("newhost", { host: newHost });
+    }
+  }
+
+  // Emit cập nhật player list
+  io.to(player.room).emit("players", { players: room.players });
+
+  // Nếu game đang chạy, cập nhật gamestate
+  if (room.active) {
+    io.to(player.room).emit("newgamestate", { gamestate: room });
+  }
+});
 });
 
 // Start server
