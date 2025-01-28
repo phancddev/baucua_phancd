@@ -1,10 +1,13 @@
-const { EventEmitter } = require('events');
-const { GameError } = require('./errors');
+// Global data structures
+const rooms = [];
+const chatrooms = [];
 
-class GameRoom extends EventEmitter {
-  static COLORS = [
+// Functions that handle room events
+// Create and add a new room to the server
+const createRoom = (id, room) => {
+  const colors = [
     "#c04e48", //red
-    "#4a7eac", //blue 
+    "#4a7eac", //blue
     "#d3c56e", //yellow
     "#4e9e58", //green
     "#ca7f3e", //orange
@@ -13,385 +16,473 @@ class GameRoom extends EventEmitter {
     "#903c9c", //purple
   ];
 
-  static ANIMALS = ["deer", "gourd", "rooster", "fish", "crab", "shrimp"];
-
-  static DEFAULT_SETTINGS = {
-    time: 30,
-    rounds: 5,
-    balance: 10
+  const r = {
+    roomId: room,
+    active: false,
+    host: id,
+    players: [],
+    bets: [],
+    dice: [],
+    colors: colors,
+    settings: { time: 30, rounds: 5, balance: 10 },
+    round: 1,
+    timer: 30,
   };
 
-  constructor(roomId, hostId) {
-    super();
-    this.roomId = roomId;
-    this.host = hostId;
-    this.active = false;
-    this.players = [];
-    this.bets = [];
-    this.dice = [];
-    this.availableColors = [...GameRoom.COLORS];
-    this.settings = { ...GameRoom.DEFAULT_SETTINGS };
-    this.round = 1;
-    this.timer = this.settings.time;
-    this.messages = [];
+  const c = {
+    roomId: room,
+    messages: [],
+  };
+
+  rooms.push(r);
+  chatrooms.push(c);
+};
+
+// Add a player to a room
+const joinRoom = (id, name, room) => {
+  const gameroom = findRoom(room)[0];
+  if (gameroom === undefined) return null;
+
+  const color = gameroom.colors.shift();
+
+  const user = {
+    id,
+    name,
+    color,
+    room,
+    total: 0,
+    net: 0,
+    rank: 1,
+    bankrupt: false,
+    ready: false,
+  };
+
+  gameroom.players.push(user);
+
+  return user;
+};
+
+const checkRoom = (room) => {
+  const r = findRoom(room);
+
+  if (r.length === 0) {
+    return "The room you tried to enter does not exist.";
+  } else if (r.length > 0 && r[0].players.length >= 8) {
+    return "The room you tried to enter is already full.";
+  } else if (r[0].active) {
+    return "The room you tried to enter has already started.";
   }
 
-  // Player Management
-  addPlayer(id, name) {
-    this.validateMaxPlayers();
-    this.validateGameNotStarted();
+  return false;
+};
 
-    const color = this.getNextColor();
-    const player = {
-      id,
-      name,
-      color,
-      total: 0,
-      net: 0,
-      rank: 1,
-      bankrupt: false,
-      ready: false
+const changeRoomSettings = (room, setting, value) => {
+  const gameroom = findRoom(room)[0];
+  if (gameroom === undefined) return null;
+
+  if (setting === "time") {
+    gameroom.settings.time = value;
+    gameroom.timer = value;
+  } else if (setting === "rounds") {
+    gameroom.settings.rounds = value;
+  } else if (setting === "balance") {
+    gameroom.settings.balance = value;
+  }
+
+  return value;
+};
+
+const findRoom = (room) => rooms.filter((r) => r.roomId === room);
+
+// Functions that handle gamestate
+// Set all player balances and gameroom to active
+const setInitialGamestate = (room, balance) => {
+  const gameroom = findRoom(room)[0];
+  if (gameroom === undefined) return null;
+
+  gameroom.active = true;
+
+  for (let i = 0; i < gameroom.players.length; i++) {
+    gameroom.players[i].total = balance;
+  }
+
+  return gameroom;
+};
+
+// Clear the gamestate and deactivate gameroom
+const resetGamestate = (room) => {
+  const gameroom = findRoom(room)[0];
+  if (gameroom === undefined) return null;
+
+  gameroom.active = false;
+  gameroom.bets = [];
+  gameroom.dice = [];
+  gameroom.round = 1;
+
+  for (let i = 0; i < gameroom.players.length; i++) {
+    gameroom.players[i].total = 0;
+    gameroom.players[i].net = 0;
+    gameroom.players[i].rank = 1;
+    gameroom.players[i].bankrupt = false;
+    gameroom.players[i].ready = false;
+  }
+
+  return gameroom;
+};
+
+// Go to next round
+const nextRound = (room) => {
+  const gameroom = findRoom(room)[0];
+  if (gameroom === undefined) return null;
+
+  gameroom.round += 1;
+  if (gameroom.round > gameroom.settings.rounds) {
+    return -1;
+  }
+  return gameroom.round;
+};
+
+// Functions that handle betting
+// Add a bet
+const addBet = (room, id, amount, animal) => {
+  const gameroom = findRoom(room)[0];
+  if (gameroom === undefined) return null;
+
+  const player = gameroom.players.find((p) => p.id === id);
+
+  const playerbet = gameroom.bets.find(
+    (pb) => pb.id === id && pb.animal === animal
+  );
+
+  if (playerbet) {
+    playerbet.amount += amount;
+  } else {
+    const bet = {
+      id: player.id,
+      animal: animal,
+      amount: amount,
+      color: player.color,
     };
 
-    this.players.push(player);
-    return player;
+    gameroom.bets.push(bet);
   }
 
-  removePlayer(playerId) {
-    const playerIndex = this.players.findIndex(p => p.id === playerId);
-    if (playerIndex === -1) {
-      throw new GameError('Player not found');
-    }
+  player.total -= amount;
+  player.net -= amount;
 
-    const player = this.players[playerIndex];
-    this.availableColors.unshift(player.color);
-    this.players.splice(playerIndex, 1);
+  return gameroom;
+};
 
-    // Reassign host if needed
-    if (this.host === playerId && this.players.length > 0) {
-      this.host = this.players[0].id;
-      this.emit('hostChanged', this.host);
-    }
+// Remove a bet
+const removeBet = (room, id, amount, animal) => {
+  const gameroom = findRoom(room)[0];
+  if (gameroom === undefined) return null;
 
-    return player;
-  }
+  const player = gameroom.players.find((p) => p.id === id);
 
-  // Game Settings
-  updateSettings(setting, value) {
-    this.validateGameNotStarted();
-    
-    if (!this.settings.hasOwnProperty(setting)) {
-      throw new GameError('Invalid setting');
-    }
+  const playerbet = gameroom.bets.find(
+    (pb) => pb.id === id && pb.animal === animal
+  );
 
-    // Validate setting values
-    switch(setting) {
-      case 'time':
-        if (value < 10 || value > 60) throw new GameError('Timer must be between 10-60 seconds');
-        break;
-      case 'rounds':
-        if (value < 1 || value > 20) throw new GameError('Rounds must be between 1-20');
-        break;
-      case 'balance':
-        if (value < 1 || value > 1000) throw new GameError('Starting balance must be between 1-1000');
-        break;
-    }
-
-    this.settings[setting] = value;
-    if (setting === 'time') {
-      this.timer = value;
-    }
-    return value;
-  }
-
-  // Game State Management 
-  startGame(startingBalance) {
-    this.validateMinPlayers();
-    this.active = true;
-    this.players.forEach(player => {
-      player.total = startingBalance;
-    });
-    return this.getGameState();
-  }
-
-  resetGame() {
-    this.active = false;
-    this.bets = [];
-    this.dice = [];
-    this.round = 1;
-    this.players.forEach(player => {
-      player.total = 0;
-      player.net = 0;
-      player.rank = 1;
-      player.bankrupt = false;
-      player.ready = false;
-    });
-    return this.getGameState();
-  }
-
-  // Betting System
-  placeBet(playerId, amount, animal) {
-    const player = this.getPlayer(playerId);
-    this.validateBet(player, amount, animal);
-
-    const existingBet = this.bets.find(b => b.id === playerId && b.animal === animal);
-    
-    if (existingBet) {
-      existingBet.amount += amount;
-    } else {
-      this.bets.push({
-        id: playerId,
-        animal,
-        amount,
-        color: player.color
-      });
-    }
-
-    player.total -= amount;
-    player.net -= amount;
-    return this.getGameState();
-  }
-
-  removeBet(playerId, amount, animal) {
-    const player = this.getPlayer(playerId);
-    const betIndex = this.bets.findIndex(b => b.id === playerId && b.animal === animal);
-    
-    if (betIndex === -1) {
-      throw new GameError('Bet not found');
-    }
-
-    this.bets.splice(betIndex, 1);
+  if (playerbet) {
+    const index = gameroom.bets.findIndex(
+      (b) => b.id === id && b.animal === animal
+    );
+    gameroom.bets.splice(index, 1);
     player.total += amount;
     player.net += amount;
-    return this.getGameState();
   }
 
-  // Game Round Management
-  rollDice() {
-    const shuffledAnimals = this.shuffleArray([...GameRoom.ANIMALS]);
-    this.dice = Array(3).fill(null).map(() => {
-      const index = Math.floor(Math.random() * GameRoom.ANIMALS.length);
-      return shuffledAnimals[index];
-    });
-    return this.getGameState();
+  return gameroom;
+};
+
+// Clear all bets
+const clearBets = (room) => {
+  const gameroom = findRoom(room)[0];
+  if (gameroom === undefined) return null;
+
+  gameroom.bets = [];
+
+  return gameroom;
+};
+
+// Clear all nets
+const clearNets = (room) => {
+  const gameroom = findRoom(room)[0];
+  if (gameroom === undefined) return null;
+
+  for (let i = 0; i < gameroom.players.length; i++) {
+    gameroom.players[i].net = 0;
   }
 
-  calculateResults() {
-    const results = new Map();
-    const seenAnimals = new Set();
+  return gameroom;
+};
 
-    this.dice.forEach(animal => {
-      const multiplier = seenAnimals.has(animal) ? 1 : 2;
-      seenAnimals.add(animal);
+// Functions that handle score calculation
+// Calculate total scores
+const calculateBets = (room) => {
+  const gameroom = findRoom(room)[0];
+  if (gameroom === undefined) return null;
 
-      const winningBets = this.bets.filter(bet => bet.animal === animal);
-      winningBets.forEach(bet => {
-        const player = this.getPlayer(bet.id);
-        player.net += bet.amount * multiplier;
-      });
-    });
+  let prev_rolls = [];
+  for (let die = 0; die < gameroom.dice.length; ++die) {
+    const bets = gameroom.bets.filter((b) => b.animal === gameroom.dice[die]);
 
-    return this.getRankedPlayers();
-  }
+    if (bets.length > 0) {
+      for (let win = 0; win < bets.length; ++win) {
+        const player = gameroom.players.find((p) => p.id === bets[win].id);
 
-  finalizeRound() {
-    // Calculate final totals
-    this.players.forEach(player => {
-      player.total += player.net > 0 ? player.net : 0;
-      player.net = 0;
-      player.ready = false;
-      
-      if (player.total === 0) {
-        player.bankrupt = true;
-        player.ready = true;
+        if (prev_rolls.find((d) => d === gameroom.dice[die])) {
+          player.total += bets[win].amount;
+        } else {
+          player.total += bets[win].amount * 2;
+        }
       }
-    });
 
-    this.bets = [];
-    this.setRankings();
-    
-    // Check for game end conditions
-    const isGameOver = this.round >= this.settings.rounds || this.isEveryoneBankrupt();
-    
-    if (!isGameOver) {
-      this.round++;
-    }
-
-    return {
-      gameState: this.getGameState(),
-      isGameOver,
-      rankings: this.getRankedPlayers()
-    };
-  }
-
-  // Timer Management
-  resetTimer() {
-    this.timer = this.settings.time;
-    return this.timer;
-  }
-
-  updateTimer() {
-    if (this.areAllPlayersReady()) {
-      return null;
-    }
-    this.timer--;
-    return this.timer;
-  }
-
-  // Chat System
-  addMessage(playerId, name, message) {
-    const player = this.getPlayer(playerId);
-    const messageObj = {
-      name,
-      color: player.color,
-      message: this.sanitizeMessage(message),
-      timestamp: new Date()
-    };
-    this.messages.push(messageObj);
-    return this.messages;
-  }
-
-  // Helper Methods
-  private getPlayer(playerId) {
-    const player = this.players.find(p => p.id === playerId);
-    if (!player) {
-      throw new GameError('Player not found');
-    }
-    return player;
-  }
-
-  private getNextColor() {
-    if (this.availableColors.length === 0) {
-      throw new GameError('No colors available');
-    }
-    return this.availableColors.shift();
-  }
-
-  private validateMaxPlayers() {
-    if (this.players.length >= 8) {
-      throw new GameError('Room is full');
+      prev_rolls.push(gameroom.dice[die]);
     }
   }
 
-  private validateMinPlayers() {
-    if (this.players.length < 2) {
-      throw new GameError('Not enough players to start');
+  // Unready players after calculation
+  for (let p = 0; p < gameroom.players.length; ++p) {
+    gameroom.players[p].ready = false;
+
+    // Check for bankruptcy
+    if (gameroom.players[p].total === 0) {
+      gameroom.players[p].bankrupt = true;
+      gameroom.players[p].ready = true;
     }
   }
 
-  private validateGameNotStarted() {
-    if (this.active) {
-      throw new GameError('Game already started');
-    }
-  }
+  return setRankingsByTotal(gameroom);
+};
 
-  private validateBet(player, amount, animal) {
-    if (!GameRoom.ANIMALS.includes(animal)) {
-      throw new GameError('Invalid animal selection');
-    }
-    if (amount <= 0 || amount > player.total) {
-      throw new GameError('Invalid bet amount');
-    }
-    if (player.bankrupt) {
-      throw new GameError('Player is bankrupt');
-    }
-  }
+// Calculate net scores
+const calculateNets = (room) => {
+  const gameroom = findRoom(room)[0];
+  if (gameroom === undefined) return null;
 
-  private setRankings() {
-    const sortedPlayers = [...this.players].sort((a, b) => b.total - a.total);
-    
-    let currentRank = 1;
-    let prevScore = sortedPlayers[0].total;
-    
-    sortedPlayers.forEach((player, index) => {
-      if (player.total < prevScore) {
-        currentRank = index + 1;
-        prevScore = player.total;
+  let prev_rolls = [];
+  for (let die = 0; die < gameroom.dice.length; ++die) {
+    const bets = gameroom.bets.filter((b) => b.animal === gameroom.dice[die]);
+
+    if (bets.length > 0) {
+      for (let win = 0; win < bets.length; ++win) {
+        const player = gameroom.players.find((p) => p.id === bets[win].id);
+
+        if (prev_rolls.find((d) => d === gameroom.dice[die])) {
+          player.net += bets[win].amount;
+        } else {
+          player.net += bets[win].amount * 2;
+        }
       }
-      player.rank = currentRank;
-    });
-  }
 
-  private shuffleArray(array) {
-    for (let i = array.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [array[i], array[j]] = [array[j], array[i]];
-    }
-    return array;
-  }
-
-  private sanitizeMessage(message) {
-    // Basic message sanitization
-    return message.trim().slice(0, 500);
-  }
-
-  // State Getters
-  getGameState() {
-    return {
-      roomId: this.roomId,
-      active: this.active,
-      host: this.host,
-      players: this.players,
-      bets: this.bets,
-      dice: this.dice,
-      settings: this.settings,
-      round: this.round,
-      timer: this.timer
-    };
-  }
-
-  getRankedPlayers() {
-    return [...this.players].sort((a, b) => b.net - a.net);
-  }
-
-  areAllPlayersReady() {
-    return this.players.every(p => p.ready);
-  }
-
-  isEveryoneBankrupt() {
-    return this.players.every(p => p.bankrupt);
-  }
-}
-
-// GameRoomManager for handling multiple rooms
-class GameRoomManager {
-  constructor() {
-    this.rooms = new Map();
-  }
-
-  createRoom(roomId, hostId) {
-    if (this.rooms.has(roomId)) {
-      throw new GameError('Room already exists');
-    }
-    const room = new GameRoom(roomId, hostId);
-    this.rooms.set(roomId, room);
-    return room;
-  }
-
-  getRoom(roomId) {
-    const room = this.rooms.get(roomId);
-    if (!room) {
-      throw new GameError('Room not found');
-    }
-    return room;
-  }
-
-  removeRoom(roomId) {
-    if (!this.rooms.delete(roomId)) {
-      throw new GameError('Room not found');
+      prev_rolls.push(gameroom.dice[die]);
     }
   }
 
-  cleanupEmptyRooms() {
-    for (const [roomId, room] of this.rooms.entries()) {
-      if (room.players.length === 0) {
-        this.rooms.delete(roomId);
-      }
+  return setRankingsByNet(gameroom);
+};
+
+// Check for bankruptcy
+const checkBankrupt = (room) => {
+  const gameroom = findRoom(room)[0];
+  if (gameroom === undefined) return null;
+
+  const players = gameroom.players;
+  for (let p = 0; p < players.length; p++) {
+    if (!players[p].bankrupt) {
+      return false;
     }
   }
-}
 
+  return true;
+};
+
+// Functions that handle the dice roll
+// Roll the dice
+const rollDice = (room) => {
+  const gameroom = findRoom(room)[0];
+  if (gameroom === undefined) return null;
+
+  const animals = ["deer", "gourd", "rooster", "fish", "crab", "shrimp"];
+
+  // Resort array for extra randomness
+  let a = animals.length,
+    k,
+    temp;
+  while (--a > 0) {
+    k = Math.floor(Math.random() * (a + 1));
+    temp = animals[k];
+    animals[k] = animals[a];
+    animals[a] = temp;
+  }
+
+  const dice = [];
+  let die;
+  for (die = 0; die < 3; die++) {
+    const index = Math.floor(Math.random() * 6);
+    const d = animals[index];
+    dice.push(d);
+  }
+
+  gameroom.dice = dice;
+
+  return gameroom;
+};
+
+// Functions that handle player events
+// Set player's ready status to true
+const setReady = (room, id) => {
+  const gameroom = findRoom(room)[0];
+  if (gameroom === undefined) return null;
+
+  const player = gameroom.players.find((user) => user.id === id);
+  player.ready = true;
+
+  return gameroom;
+};
+
+// Check if all players are ready
+const allPlayersReady = (room) => {
+  const gameroom = findRoom(room)[0];
+  if (gameroom === undefined) return null;
+  return allReady(gameroom);
+};
+
+// Remove the player from the room
+const removePlayer = (id, room) => {
+  const room_index = rooms.findIndex((rm) => rm.roomId === room);
+  if (room_index === -1) return null;
+
+  const players = rooms[room_index].players;
+  const player_index = players.findIndex((user) => user.id === id);
+  if (player_index === -1) return null;
+  const player = players.splice(player_index, 1)[0];
+
+  const chat_index = chatrooms.findIndex((cr) => cr.roomId === room);
+
+  // Return the color back to the room
+  rooms[room_index].colors.unshift(player.color);
+
+  // If there are no more players in the room, remove the room and chatroom from the database
+  if (rooms[room_index].players.length === 0) {
+    rooms.splice(room_index, 1);
+    chatrooms.splice(chat_index, 1);
+  }
+
+  return player;
+};
+
+// Functions that handle the chat
+// Add a message to the chatroom
+const addMessage = (id, room, name, message) => {
+  const chatroom = chatrooms.find((c) => c.roomId === room);
+  const gameroom = findRoom(room)[0];
+  if (gameroom === undefined) return null;
+
+  const player = gameroom.players.find((p) => p.id === id);
+
+  const messageObject = {
+    name: name,
+    color: player.color,
+    message: message,
+  };
+
+  chatroom.messages.push(messageObject);
+
+  return chatroom.messages;
+};
+
+// Functions that handle the timer
+// Reset the timer
+const resetTime = (room) => {
+  const gameroom = findRoom(room)[0];
+  if (gameroom === undefined) return null;
+
+  gameroom.timer = gameroom.settings.time;
+
+  return gameroom.timer;
+};
+
+// Count down the timer by 1s
+const countdown = (room) => {
+  const gameroom = findRoom(room)[0];
+  if (gameroom === undefined || allReady(gameroom)) {
+    return null;
+  }
+
+  gameroom.timer -= 1;
+
+  return gameroom.timer;
+};
+
+// Helper functions
+// Sort and return rankings based off the total scores
+const setRankingsByTotal = (gameroom) => {
+  const players = gameroom.players;
+  const sorted_players = [...players].sort((a, b) => {
+    return b.total - a.total;
+  });
+
+  // Set rankings
+  sorted_players[0].rank = 1;
+  for (let i = 1; i < sorted_players.length; i++) {
+    if (sorted_players[i].total === sorted_players[i - 1].total) {
+      sorted_players[i].rank = sorted_players[i - 1].rank;
+    } else {
+      sorted_players[i].rank = sorted_players[i - 1].rank + 1;
+    }
+  }
+
+  return sorted_players;
+};
+
+// Sort and return rankings based on net scores
+const setRankingsByNet = (gameroom) => {
+  const players = gameroom.players;
+  const sorted_players = [...players].sort((a, b) => {
+    return b.net - a.net;
+  });
+
+  return sorted_players;
+};
+
+// Check if all players are ready
+const allReady = (gameroom) => {
+  const players = gameroom.players;
+
+  for (let i = 0; i < players.length; i++) {
+    if (players[i].ready === false) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+// Module Exports
 module.exports = {
-  GameRoom,
-  GameRoomManager
+  createRoom,
+  joinRoom,
+  checkRoom,
+  changeRoomSettings,
+  findRoom,
+  setInitialGamestate,
+  resetGamestate,
+  nextRound,
+  addBet,
+  removeBet,
+  clearBets,
+  clearNets,
+  calculateBets,
+  calculateNets,
+  checkBankrupt,
+  rollDice,
+  setReady,
+  allPlayersReady,
+  removePlayer,
+  addMessage,
+  resetTime,
+  countdown,
 };
