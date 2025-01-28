@@ -52,3 +52,39 @@
     align-self: flex-end;
   }
 }
+.setting-input {
+  width: 80px;
+  padding: 5px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background-color: white;
+  text-align: center;
+  font-size: 14px;
+}
+
+.setting-input.disable {
+  background-color: #eee;
+  cursor: not-allowed;
+}
+
+.setting-label {
+  display: flex;
+  align-items: center;
+  margin-right: 10px;
+}
+
+.setting-icon {
+  margin-right: 5px;
+}
+
+.lobby-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 15px;
+}
+
+.lobby-options label {
+  display: flex;
+  align-items: center;
+}

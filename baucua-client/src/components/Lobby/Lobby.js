@@ -96,7 +96,7 @@ function Lobby(props) {
           onSettingsChange={props.onSettingsChange}
         />
         <div className="lobby">
-          <p className="lobby-title">Lobby ({props.players.length}/8)</p>
+          <p className="lobby-title">Lobby ({props.players.length}/40)</p>
           <p className="lobby-message">{lobby_message}</p>
           <div className="lobby-players">
             {props.players.map((player, index) => (
