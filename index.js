@@ -231,45 +231,138 @@ io.on("connection", (socket) => {
    }, 3000);
  });
 
- const handleRoundEnd = (room) => {
-   io.to(room).emit("showtimesup");
+//  const handleRoundEnd = (room) => {
+//    io.to(room).emit("showtimesup");
 
-   setTimeout(() => {
-     io.to(room).emit("hidetimesup");
-     const gamestate = rollDice(room);
-     if (!gamestate) return;
+//    setTimeout(() => {
+//      io.to(room).emit("hidetimesup");
+//      const gamestate = rollDice(room);
+//      if (!gamestate) return;
 
-     io.to(room).emit("diceroll", {
-       die1: gamestate.dice[0],
-       die2: gamestate.dice[1],
-       die3: gamestate.dice[2],
-     });
+//      io.to(room).emit("diceroll", {
+//        die1: gamestate.dice[0],
+//        die2: gamestate.dice[1],
+//        die3: gamestate.dice[2],
+//      });
 
-     setTimeout(() => {
-       const results = calculateNets(room);
-       io.to(room).emit("showresults", { results });
+//      setTimeout(() => {
+//        const results = calculateNets(room);
+//        io.to(room).emit("showresults", { results });
 
-       setTimeout(() => {
-         io.to(room).emit("hideresults");
-         const updatedGamestate = clearBets(room);
-         if (!updatedGamestate) return;
+//        setTimeout(() => {
+//          io.to(room).emit("hideresults");
+//          const updatedGamestate = clearBets(room);
+//          if (!updatedGamestate) return;
 
-         io.to(room).emit("newgamestate", { gamestate: updatedGamestate });
+//          io.to(room).emit("newgamestate", { gamestate: updatedGamestate });
 
-         const round = nextRound(room);
-         const bankrupt = checkBankrupt(room);
-         if (bankrupt === null) return;
+//          const round = nextRound(room);
+//          const bankrupt = checkBankrupt(room);
+//          if (bankrupt === null) return;
 
-         if (round === -1 || bankrupt) {
-           io.to(room).emit("gameover", { results });
-         } else {
-           io.to(room).emit("nextround", { round });
-         }
-       }, 5000);
-     }, 5500);
-   }, 3000);
- };
+//          if (round === -1 || bankrupt) {
+//            io.to(room).emit("gameover", { results });
+//          } else {
+//            io.to(room).emit("nextround", { round });
+//          }
+//        }, 5000);
+//      }, 5500);
+//    }, 3000);
+//  };
 
+// Round handling
+socket.on("roundstart", () => {
+  let current_time = resetTime(socket.roomname);
+  if (!current_time) return;
+
+  io.to(socket.roomname).emit("timer", { current_time });
+  io.to(socket.roomname).emit("cleardice");
+  io.to(socket.roomname).emit("showround");
+
+  setTimeout(() => {
+    io.to(socket.roomname).emit("hideround");
+
+    const interval = setInterval(() => {
+      const room = findRoom(socket.roomname)[0];
+      if (!room) {
+        clearInterval(interval);
+        return;
+      }
+
+      // Kiểm tra nếu tất cả người chơi đã đặt cược
+      const allPlayersPlaced = room.players.every(player => {
+        const playerBets = room.bets.filter(bet => bet.id === player.id);
+        return playerBets.length > 0 || player.bankrupt;
+      });
+
+      if (allPlayersPlaced) {
+        clearInterval(interval);
+        handleRoundEnd(socket.roomname);
+        return;
+      }
+
+      current_time = countdown(socket.roomname);
+
+      if (!current_time) {
+        clearInterval(interval);
+      } else if (current_time >= 0) {
+        io.to(socket.roomname).emit("timer", { current_time });
+      } else {
+        clearInterval(interval);
+        // Khi hết thời gian, tiến hành quay xúc xắc
+        handleRoundEnd(socket.roomname);
+      }
+    }, 1000);
+  }, 3000);
+});
+
+const handleRoundEnd = (room) => {
+  const gameRoom = findRoom(room)[0];
+  if (!gameRoom) return;
+
+  io.to(room).emit("showtimesup");
+
+  setTimeout(() => {
+    io.to(room).emit("hidetimesup");
+    const gamestate = rollDice(room);
+    if (!gamestate) return;
+
+    // Emit kết quả xúc xắc
+    io.to(room).emit("diceroll", {
+      die1: gamestate.dice[0],
+      die2: gamestate.dice[1],
+      die3: gamestate.dice[2],
+    });
+
+    setTimeout(() => {
+      // Tính toán kết quả
+      const results = calculateNets(room);
+      io.to(room).emit("showresults", { results });
+
+      setTimeout(() => {
+        io.to(room).emit("hideresults");
+        const finalResults = calculateBets(room);
+        let updatedGamestate = clearBets(room);
+        if (!updatedGamestate) return;
+        updatedGamestate = clearNets(room);
+        if (!updatedGamestate) return;
+
+        io.to(room).emit("newgamestate", { gamestate: updatedGamestate });
+
+        // Kiểm tra vòng tiếp theo hoặc kết thúc game
+        const nextRoundNum = nextRound(room);
+        const bankrupt = checkBankrupt(room);
+        if (bankrupt === null) return;
+
+        if (nextRoundNum === -1 || bankrupt) {
+          io.to(room).emit("gameover", { results: finalResults });
+        } else {
+          io.to(room).emit("nextround", { round: nextRoundNum });
+        }
+      }, 5000);
+    }, 5500);
+  }, 3000);
+};
  // Betting
  socket.on("bet", ({ id, amount, animal }) => {
    const gamestate = addBet(socket.roomname, id, amount, animal);

@@ -62,20 +62,38 @@ const joinRoom = (id, name, room) => {
   return user;
 };
 
+// const checkRoom = (room) => {
+//   const r = findRoom(room);
+
+//   if (r.length === 0) {
+//     return "The room you tried to enter does not exist.";
+//   } else if (r.length > 0 && r[0].players.length >= 8) {
+//     return "The room you tried to enter is already full.";
+//   } else if (r[0].active) {
+//     return "The room you tried to enter has already started.";
+//   }
+
+//   return false;
+// };
+const MAX_PLAYERS = 40; // Thêm constant này
+
 const checkRoom = (room) => {
   const r = findRoom(room);
 
   if (r.length === 0) {
     return "The room you tried to enter does not exist.";
-  } else if (r.length > 0 && r[0].players.length >= 8) {
-    return "The room you tried to enter is already full.";
-  } else if (r[0].active) {
+  }
+  
+  if (r[0].active) {
     return "The room you tried to enter has already started.";
+  }
+  
+  if (r[0].players.length >= MAX_PLAYERS) { // Thay đổi từ 8 lên 40
+    return "The room you tried to enter is already full.";
   }
 
   return false;
 };
-
 const changeRoomSettings = (room, setting, value) => {
   const gameroom = findRoom(room)[0];
   if (gameroom === undefined) return null;

@@ -110,8 +110,13 @@ function MainMenu(props) {
   </a>
   <br />
   <span style={{ display: "block", textAlign: "center", marginTop: "10px" }}>
-    Recode, add the Docker system, fix bugs, update, and configure to deploy to a VPS using Docker.{" "}
-    <a href="https://github.com/phancddev" rel="noopener noreferrer" target="_blank">
+    Recode, add the Docker system, fix bugs, update, and configure to deploy to a VPS using Docker by{" "}
+    <a
+      href="https://github.com/phancddev"
+      rel="noopener noreferrer"
+      target="_blank"
+      style={{ color: "white" }}
+    >
       Phan Cong Dung
     </a>
   </span>
