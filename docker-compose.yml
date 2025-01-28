@@ -12,6 +12,7 @@ services:
       - NODE_ENV=development
       - PORT=9000
       - HOST=0.0.0.0
+      - NODE_OPTIONS=--openssl-legacy-provider
     volumes:
       - .:/app
       - /app/node_modules

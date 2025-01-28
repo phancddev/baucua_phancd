@@ -10,8 +10,7 @@ COPY package*.json ./
 COPY baucua-client/package*.json ./baucua-client/
 
 # Install server dependencies
-RUN npm install && \
-    npm install express-rate-limit winston --save
+RUN npm install
 
 # Install client dependencies
 RUN cd baucua-client && npm install
@@ -19,8 +18,8 @@ RUN cd baucua-client && npm install
 # Copy rest of the application
 COPY . .
 
-# Build client
-RUN cd baucua-client && npm run build
+# Set environment variable for legacy OpenSSL provider
+ENV NODE_OPTIONS=--openssl-legacy-provider
 
 # Expose ports
 EXPOSE 9000 3000
