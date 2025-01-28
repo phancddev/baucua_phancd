@@ -17,7 +17,8 @@ const io = require("socket.io")(http, {
     methods: ["GET", "POST"],
     credentials: true
   },
-  transports: ['websocket', 'polling']
+  transports: ['websocket', 'polling'],
+  allowEIO3: true
 });
 
 // Import room functions
