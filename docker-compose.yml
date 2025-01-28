@@ -6,30 +6,16 @@ services:
     build: .
     container_name: baucua-game
     restart: unless-stopped
-    expose:
-      - "9000"
-      - "3000"
+    ports:
+      - "3000:3000"  # Frontend
+      - "9000:9000"  # Backend & WebSocket
     environment:
       - NODE_ENV=production
       - PORT=9000
+      - HOST=0.0.0.0  # Để đảm bảo server lắng nghe trên tất cả interfaces
     volumes:
       - .:/app
       - /app/node_modules
-    networks:
-      - baucua-network
-
-  nginx:
-    image: nginx:alpine
-    container_name: baucua-nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"  # HTTP
-      - "443:443"  # HTTPS (nếu bạn có SSL)
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      # - ./ssl:/etc/nginx/ssl:ro  # Nếu bạn có SSL certificates
-    depends_on:
-      - baucua-app
     networks:
       - baucua-network
 
