@@ -9,12 +9,13 @@ services:
       - "3000:3000"  # Frontend
       - "9000:9000"  # Backend & WebSocket
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=development
       - PORT=9000
       - HOST=0.0.0.0
     volumes:
       - .:/app
       - /app/node_modules
+      - /app/baucua-client/node_modules
     networks:
       - baucua-network
 
